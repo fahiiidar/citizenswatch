@@ -39,7 +39,7 @@ export function checkItem(it) {
   if (!/^https:\/\/(x\.com|twitter\.com|www\.facebook\.com|facebook\.com|m\.facebook\.com)\//.test(it.source_url || '')) problems.push('source_url');
   if (!CATEGORIES.includes(it.category)) problems.push('category');
   if (it.category === 'officials' && !AGENCIES.includes(it.agency)) problems.push('agency');
-  if (typeof it.caption !== 'string' || it.caption.trim().length < 10 || it.caption.length > 280) problems.push('caption');
+  if (typeof it.caption !== 'string' || it.caption.trim().length < 10 || it.caption.length > 4000) problems.push('caption');
   if (typeof it.place_label !== 'string' || it.place_label.trim().length < 2) problems.push('place_label');
   if (!(it.lat >= 4 && it.lat <= 14 && it.lng >= 2.6 && it.lng <= 14.8)) problems.push('lat/lng');
   if (!DAY.test(it.occurred_on || '')) problems.push('occurred_on');
@@ -158,10 +158,16 @@ export default route(['GET'], async (req, res) => {
   for (const it of slice) {
     const problems = checkItem(it);
     if (problems.length) { out.failed.push({ source: it.source_url, reason: `bad ${problems.join(', ')}` }); continue; }
-    const id = idFor(it.source_url);
-    const exists = await select(cfg, 'reports', `select=id,media&id=eq.${id}`);
-    // Already imported: with refresh=1, add photos to it if it has none yet.
-    const addTo = exists.length && q.get('refresh') === '1' && !(exists[0].media || []).length && (it.media || []).length;
+    const id = idFor(it.import_key || it.source_url);
+    const exists = await select(cfg, 'reports', `select=id,media,caption,source_url&id=eq.${id}`);
+    const refresh = exists.length && q.get('refresh') === '1';
+    // Already imported: with refresh=1, bring its wording and source up to date,
+    // and add photos if it has none yet.
+    const addTo = refresh && !(exists[0].media || []).length && (it.media || []).length;
+    if (refresh && (exists[0].caption !== it.caption.trim() || exists[0].source_url !== it.source_url) && !dry) {
+      await update(cfg, 'reports', `id=eq.${id}`, { caption: it.caption.trim(), source_url: it.source_url });
+      out.updated = [...(out.updated || []), id];
+    }
     if (exists.length && !addTo) { out.skipped.push(id); continue; }
     if (dry) { out.imported.push({ id, dry: true, ...(addTo ? { addMedia: true } : {}) }); continue; }
 
