@@ -101,3 +101,11 @@ test('a time later today than now is refused, and bad times are refused', () => 
   assert.equal(validateNewReport({ ...base, when: 'today', time: '14:50' }, NOW).time_of_day, 'afternoon');
   assert.throws(() => validateNewReport({ ...base, when: 'today', time: '25:00' }, NOW), /valid time/);
 });
+
+test('election incidents need to say what kind of problem it was', () => {
+  assert.throws(() => validateNewReport({ ...base, category: 'election' }, NOW), /election problem/);
+  assert.throws(() => validateNewReport({ ...base, category: 'election', electionKind: 'nope' }, NOW), /election problem/);
+  const r = validateNewReport({ ...base, category: 'election', electionKind: 'vote_buying' }, NOW);
+  assert.equal(r.election_kind, 'vote_buying');
+  assert.equal(validateNewReport({ ...base, electionKind: 'rigging' }, NOW).election_kind, null);
+});

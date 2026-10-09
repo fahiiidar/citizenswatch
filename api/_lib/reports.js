@@ -1,6 +1,7 @@
 import { HttpError } from './http.js';
 
-export const CATEGORIES = ['gunmen', 'kidnapping', 'attack', 'road', 'robbery', 'avoid', 'officials', 'clear', 'other'];
+export const CATEGORIES = ['gunmen', 'kidnapping', 'attack', 'road', 'robbery', 'avoid', 'officials', 'election', 'clear', 'other'];
+export const ELECTION_KINDS = ['intimidation', 'violence', 'vote_buying', 'rigging', 'suppression', 'arrest', 'other'];
 export const AGENCIES = ['police', 'army', 'lastma', 'ndlea', 'frsc', 'vio', 'customs', 'immigration', 'nscdc', 'hisbah', 'vigilante', 'taskforce', 'other'];
 export const TIMES_OF_DAY = ['morning', 'afternoon', 'evening', 'night'];
 export const MEDIA_TYPES = ['image/jpeg', 'video/webm', 'video/mp4'];
@@ -50,6 +51,11 @@ export function validateNewReport(body, now = Date.now()) {
   if (category === 'officials') {
     agency = String(body.agency || '');
     if (!AGENCIES.includes(agency)) throw new HttpError(400, 'Choose which agency was involved.');
+  }
+  let electionKind = null;
+  if (category === 'election') {
+    electionKind = String(body.electionKind || '');
+    if (!ELECTION_KINDS.includes(electionKind)) throw new HttpError(400, 'Choose what kind of election problem it was.');
   }
 
   const placeLabel = cleanText(body.placeLabel, 140);
@@ -119,6 +125,7 @@ export function validateNewReport(body, now = Date.now()) {
   return {
     category,
     agency,
+    election_kind: electionKind,
     caption,
     place_label: placeLabel,
     area_label: areaLabel,
@@ -195,6 +202,7 @@ export function mapShape(r, now = Date.now()) {
     id: r.id,
     category: r.category,
     agency: r.agency || null,
+    election_kind: r.election_kind || null,
     ended: Boolean(r.ended_at),
     status: statusOf(r),
     live: isLive(r, now),
@@ -245,5 +253,5 @@ export function updateShape(u, urls = {}) {
 }
 
 export const PUBLIC_COLUMNS =
-  'id,created_at,category,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,mod_override,confirms,falses,old_media,updates,agency,ended_at,seen_media,seen_of,origin';
+  'id,created_at,category,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,mod_override,confirms,falses,old_media,updates,agency,election_kind,ended_at,seen_media,seen_of,origin';
 export const UPDATE_COLUMNS = 'id,report_id,created_at,caption,media,sensitive,old_media,status,seen_media,seen_of';

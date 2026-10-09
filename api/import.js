@@ -16,7 +16,7 @@ import path from 'node:path';
 import { route, send, queryOf, HttpError } from './_lib/http.js';
 import { requireServerConfig } from './_lib/env.js';
 import { select, insert, update, uploadFile } from './_lib/supa.js';
-import { CATEGORIES, AGENCIES, TIMES_OF_DAY, fuzz, extFor, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES } from './_lib/reports.js';
+import { CATEGORIES, AGENCIES, ELECTION_KINDS, TIMES_OF_DAY, fuzz, extFor, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES } from './_lib/reports.js';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const HOUR_FOR = { morning: 9, afternoon: 14, evening: 19, night: 23 };
@@ -39,6 +39,7 @@ export function checkItem(it) {
   if (!/^https:\/\/(x\.com|twitter\.com|www\.facebook\.com|facebook\.com|m\.facebook\.com)\//.test(it.source_url || '')) problems.push('source_url');
   if (!CATEGORIES.includes(it.category)) problems.push('category');
   if (it.category === 'officials' && !AGENCIES.includes(it.agency)) problems.push('agency');
+  if (it.category === 'election' && !ELECTION_KINDS.includes(it.election_kind)) problems.push('election_kind');
   if (typeof it.caption !== 'string' || it.caption.trim().length < 10 || it.caption.length > 4000) problems.push('caption');
   if (typeof it.place_label !== 'string' || it.place_label.trim().length < 2) problems.push('place_label');
   if (!(it.lat >= 4 && it.lat <= 14 && it.lng >= 2.6 && it.lng <= 14.8)) problems.push('lat/lng');
@@ -234,6 +235,7 @@ export default route(['GET'], async (req, res) => {
         created_at: new Date(it.posted_at).toISOString(),
         category: it.category,
         agency: it.category === 'officials' ? it.agency : null,
+        election_kind: it.category === 'election' ? it.election_kind : null,
         caption: it.caption.trim(),
         place_label: it.place_label.trim().slice(0, 140),
         area_label: (it.area_label || '').trim().slice(0, 140) || null,

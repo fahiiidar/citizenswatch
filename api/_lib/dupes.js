@@ -22,7 +22,7 @@ export async function samePhoneRecent(cfg, { dHash, nf, category, lat, lng }, no
 export async function nearbyOpen(cfg, { category, lat, lng, hours = 12 }, now = Date.now()) {
   const since = new Date(now - hours * 3600e3).toISOString();
   return select(cfg, 'reports',
-    `select=id,created_at,category,agency,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,mod_override,confirms,falses,updates,ended_at,origin`
+    `select=id,created_at,category,agency,election_kind,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,mod_override,confirms,falses,updates,ended_at,origin`
     + `&status=eq.visible&ended_at=is.null&category=eq.${category}&occurred_at=gte.${since}&${box(lat, lng)}&order=occurred_at.desc&limit=5`);
 }
 

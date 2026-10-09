@@ -7,7 +7,7 @@ import { statusOf } from './_lib/reports.js';
 // then opens the report in the app. Previews never include the photo or caption.
 const NAMES = {
   gunmen: 'Gunmen sighted', kidnapping: 'Kidnapping', attack: 'Attack happening', road: 'Road unsafe',
-  robbery: 'Robbery', avoid: 'Area to avoid', officials: 'Harassment by officials', clear: 'All clear', other: 'Safety report',
+  robbery: 'Robbery', avoid: 'Area to avoid', officials: 'Harassment by officials', election: 'Election incident', clear: 'All clear', other: 'Safety report',
 };
 const STATUS = { unverified: 'Unverified', corroborated: 'Corroborated', disputed: 'Disputed' };
 

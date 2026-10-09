@@ -1,7 +1,7 @@
 // The three-step report flow: where, what and when, then photos and posting.
 import { html, icon, tip, mount, toast, shareReport, openModal } from './ui.js';
 import { api, upload, mine } from './api.js';
-import { CATS, CAT_KEYS, AGENCIES, catTitle, lagosDate, timeAgo, whenLabel, whereLabel, STATUS } from './format.js';
+import { CATS, CAT_KEYS, AGENCIES, ELECTION_KINDS, catTitle, lagosDate, timeAgo, whenLabel, whereLabel, STATUS } from './format.js';
 import { state } from './state.js';
 import { processPhoto, processClip, canProcessClips, classifyTaken, takenLabel } from './media.js';
 import { mountCheck, getToken, resetCheck } from './turnstile.js';
@@ -21,7 +21,7 @@ let skipNextMove = false;
 function fresh() {
   return {
     lat: null, lng: null, placeLabel: '', areaLabel: '', placeSub: '', placeEdited: false,
-    category: null, agency: null, when: 'now', date: lagosDate(), time: '', caption: '',
+    category: null, agency: null, electionKind: null, when: 'now', date: lagosDate(), time: '', caption: '',
     media: [], keepSound: false, sensitive: false,
     checks: { face: false, forces: false, today: false },
     error: null, duplicateOf: null, posting: false, progress: 0,
@@ -264,6 +264,12 @@ function renderWhat() {
           ${Object.entries(AGENCIES).map(([k, label]) => html`<button type="button" class="pill-choice" role="radio" data-agency="${k}" aria-checked="${draft.agency === k}">${label}</button>`)}
         </div>
       </div>
+      <div id="election-wrap" style="display:flex;flex-direction:column;gap:8px" ${draft.category === 'election' ? '' : 'hidden'}>
+        <span class="field-label" style="justify-content:flex-start;gap:2px">What kind of election problem? ${tip('election', 'What counts as an election incident')}</span>
+        <div class="wrap-row" role="radiogroup" aria-label="Election problem">
+          ${Object.entries(ELECTION_KINDS).map(([k, label]) => html`<button type="button" class="pill-choice" role="radio" data-ekind="${k}" aria-checked="${draft.electionKind === k}">${label}</button>`)}
+        </div>
+      </div>
       <div style="display:flex;flex-direction:column;gap:8px">
         <span class="field-label">When did it happen?</span>
         <div class="wrap-row" role="radiogroup" aria-label="When">
@@ -298,6 +304,13 @@ function renderWhat() {
     page.querySelectorAll('[data-cat]').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
     q('#agency-wrap').hidden = draft.category !== 'officials';
     if (draft.category !== 'officials') draft.agency = null;
+    q('#election-wrap').hidden = draft.category !== 'election';
+    if (draft.category !== 'election') draft.electionKind = null;
+  }));
+  page.querySelectorAll('[data-ekind]').forEach((b) => b.addEventListener('click', () => {
+    draft.electionKind = b.dataset.ekind;
+    page.querySelectorAll('[data-ekind]').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+    q('#err').hidden = true;
   }));
   page.querySelectorAll('[data-agency]').forEach((b) => b.addEventListener('click', () => {
     draft.agency = b.dataset.agency;
@@ -331,6 +344,7 @@ function renderWhat() {
     const err = q('#err');
     const problem = !draft.category ? 'Choose what happened.'
       : draft.category === 'officials' && !draft.agency ? 'Choose which agency was involved.'
+      : draft.category === 'election' && !draft.electionKind ? 'Choose what kind of election problem it was.'
       : draft.caption.trim().length < 3 ? 'Describe what happened in a few words.'
         : draft.when === 'date' && (!draft.date || draft.date > today || draft.date < minDate) ? `Choose a date in the last ${maxDays} days.`
           : draft.time && (draft.when === 'today' || (draft.when === 'date' && draft.date === today)) && draft.time > nowClock()
@@ -436,7 +450,7 @@ function renderMedia() {
       </fieldset>` : ''}
       <div style="padding:12px 14px;background:var(--soft-2);border-radius:16px;display:flex;gap:12px;align-items:center">
         <span class="ct sm ${c.tone}">${icon(c.icon, 18)}</span>
-        <span style="display:flex;flex-direction:column;gap:1px;min-width:0"><b style="font-weight:600">${catTitle({ category: draft.category, agency: draft.agency })} · ${whenText}${draft.time && draft.when !== 'now' ? `, ${draft.time}` : ''}</b>
+        <span style="display:flex;flex-direction:column;gap:1px;min-width:0"><b style="font-weight:600">${catTitle({ category: draft.category, agency: draft.agency, election_kind: draft.electionKind })} · ${whenText}${draft.time && draft.when !== 'now' ? `, ${draft.time}` : ''}</b>
         <span class="sub ellipsis">${draft.placeLabel} · no name or account ${tip('anonymous', 'How you stay anonymous')}</span></span>
       </div>
       <div id="cf-check"></div>
@@ -550,6 +564,7 @@ async function post() {
     const res = await api.create({
       category: draft.category,
       agency: draft.category === 'officials' ? draft.agency : null,
+      electionKind: draft.category === 'election' ? draft.electionKind : null,
       caption: draft.caption.trim(),
       placeLabel: draft.placeLabel.trim(),
       areaLabel: draft.areaLabel,
@@ -577,7 +592,7 @@ async function post() {
     mine.addPosted(res.id);
     lastPosted = {
       id: res.id,
-      title: catTitle({ category: draft.category, agency: draft.agency }),
+      title: catTitle({ category: draft.category, agency: draft.agency, election_kind: draft.electionKind }),
       where: draft.areaLabel || draft.placeLabel,
     };
     resetDraft();

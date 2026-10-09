@@ -6,7 +6,7 @@ import { fullShape, updateShape, statusOf, watToday } from './_lib/reports.js';
 import { recountUpdates } from './_lib/updates.js';
 
 const COLUMNS =
-  'id,created_at,category,agency,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,hidden_reason,reviewed,mod_override,confirms,falses,flags,device_hash,old_media,updates,ended_at,ended_by,seen_media,seen_of,origin,source_url';
+  'id,created_at,category,agency,election_kind,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,hidden_reason,reviewed,mod_override,confirms,falses,flags,device_hash,old_media,updates,ended_at,ended_by,seen_media,seen_of,origin,source_url';
 const UPDATE_COLS = 'id,report_id,created_at,caption,media,sensitive,old_media,seen_media,seen_of,status,hidden_reason,reviewed,flags,device_hash';
 
 const QUEUES = {

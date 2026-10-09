@@ -9,7 +9,7 @@ import {
 } from './_lib/reports.js';
 
 const RANGES = { '1h': 1, '24h': 24, '7d': 24 * 7, '30d': 24 * 30 };
-const MAP_COLUMNS = 'id,created_at,category,agency,ended_at,is_now,occurred_at,place_label,area_label,lat,lng,media,mod_override,confirms,falses';
+const MAP_COLUMNS = 'id,created_at,category,agency,election_kind,ended_at,is_now,occurred_at,place_label,area_label,lat,lng,media,mod_override,confirms,falses';
 
 export default route(['GET', 'POST'], async (req, res) => {
   const cfg = requireServerConfig();
@@ -129,6 +129,7 @@ async function create(cfg, req, res) {
     id,
     category: report.category,
     agency: report.agency,
+    election_kind: report.election_kind,
     caption: report.caption,
     place_label: report.place_label,
     area_label: report.area_label,

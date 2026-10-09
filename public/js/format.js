@@ -8,6 +8,7 @@ export const CATS = {
   robbery: { name: 'Robbery', icon: 'bag', tone: 'amber' },
   avoid: { name: 'Area to avoid', icon: 'ban', tone: 'amber' },
   officials: { name: 'Harassment by officials', icon: 'badge', tone: 'amber' },
+  election: { name: 'Election incident', icon: 'ballot', tone: 'amber' },
   clear: { name: 'All clear', icon: 'shield', tone: 'green' },
   other: { name: 'Something else', icon: 'more', tone: 'grey' },
 };
@@ -30,10 +31,23 @@ export const AGENCIES = {
   other: 'Other agency',
 };
 
-// "Harassment by officials · Police"
+// What went wrong, for "Election incident".
+export const ELECTION_KINDS = {
+  intimidation: 'Threats or harassment',
+  violence: 'Violence or thugs',
+  vote_buying: 'Vote buying',
+  rigging: 'Rigging or ballot snatching',
+  suppression: 'Voters blocked or turned away',
+  arrest: 'Arrest or abduction of supporters',
+  other: 'Something else',
+};
+
+// "Harassment by officials · Police", "Election incident · Vote buying"
 export function catTitle(r) {
   const c = CATS[r.category] || CATS.other;
-  return r.category === 'officials' && r.agency ? `${c.name} · ${AGENCIES[r.agency] || 'Other agency'}` : c.name;
+  if (r.category === 'officials' && r.agency) return `${c.name} · ${AGENCIES[r.agency] || 'Other agency'}`;
+  if (r.category === 'election' && r.election_kind) return `${c.name} · ${ELECTION_KINDS[r.election_kind] || 'Something else'}`;
+  return c.name;
 }
 export const TONE_COLOR = { red: '#D92D20', amber: '#DC6803', green: '#079455', grey: '#667085' };
 
@@ -134,6 +148,10 @@ export const TIPS = {
   officials: {
     title: 'Harassment by officials',
     text: 'Extortion, beatings, illegal arrests or phone searches by police, soldiers, LASTMA, NDLEA or other officials. Describe what happened, not who: no names or badge numbers.',
+  },
+  election: {
+    title: 'Election incident',
+    text: 'Threats or violence against voters, candidates or party supporters of any party, vote buying, ballot snatching or stuffing, voters being blocked or turned away, and arrests or abductions linked to the election. Say what happened and where. You can say which party\'s supporters, agents or officials were involved, whichever party it is. Do not post anyone\'s home address.',
   },
   ended: {
     title: 'Marked as over',

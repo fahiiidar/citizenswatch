@@ -98,7 +98,7 @@ export function startMock(port = 54321) {
     reports: () => ({
       created_at: new Date().toISOString(), media: [], sensitive: false, status: 'pending', reviewed: false,
       mod_override: null, confirms: 0, falses: 0, flags: 0, hidden_reason: null, time_of_day: null, area_label: null,
-      old_media: false, net_fp: null, updates: 0, agency: null, ended_at: null, ended_by: null, seen_media: false, seen_of: null,
+      old_media: false, net_fp: null, updates: 0, agency: null, election_kind: null, ended_at: null, ended_by: null, seen_media: false, seen_of: null,
       origin: 'public', source_url: null, source_kind: null,
     }),
     report_updates: () => ({

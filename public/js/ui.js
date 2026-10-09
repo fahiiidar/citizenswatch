@@ -66,6 +66,7 @@ const P = {
   bag: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>',
   ban: '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
   more: '<path d="M6 12h.01M12 12h.01M18 12h.01" stroke-width="3"/>',
+  ballot: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v6"/><path d="M10 8l1.5 1.5L14 7"/>',
   badge: '<path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3z"/><path d="M12 8v4.5"/><path d="M12 15.6h.01" stroke-width="2.6"/>',
 };
 
