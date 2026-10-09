@@ -95,22 +95,7 @@ export function validateNewReport(body, now = Date.now()) {
     occurredAt = new Date(ms).toISOString();
   }
 
-  const media = Array.isArray(body.media) ? body.media : [];
-  if (media.length > MAX_PHOTOS) throw new HttpError(400, `Add at most ${MAX_PHOTOS} photos.`);
-  const videos = media.filter((m) => String(m?.type).startsWith('video/'));
-  if (videos.length > 1 || (videos.length === 1 && media.length > 1)) {
-    throw new HttpError(400, 'Add either one clip or up to 3 photos, not both.');
-  }
-  const mediaSpec = media.map((m) => {
-    const type = String(m?.type || '');
-    const size = Number(m?.size);
-    if (!MEDIA_TYPES.includes(type)) throw new HttpError(400, 'That file type is not supported.');
-    const limit = type.startsWith('video/') ? MAX_VIDEO_BYTES : MAX_PHOTO_BYTES;
-    if (!Number.isFinite(size) || size <= 0 || size > limit) {
-      throw new HttpError(400, type.startsWith('video/') ? 'That clip is too large.' : 'That photo is too large.');
-    }
-    return { type, size };
-  });
+  const mediaSpec = validateMedia(body.media);
 
   return {
     category,
@@ -125,7 +110,49 @@ export function validateNewReport(body, now = Date.now()) {
     occurred_at: occurredAt,
     sensitive: Boolean(body.sensitive),
     mediaSpec,
+    old_media: mediaSpec.some((m) => m.check === 'old'),
   };
+}
+
+// Photos and clips: up to 3 photos or one clip. Each carries the phone's own
+// check of when it was taken: 'ok', 'old' (days before the event) or 'unknown'.
+export const MEDIA_CHECKS = ['ok', 'old', 'unknown'];
+export function validateMedia(input) {
+  const media = Array.isArray(input) ? input : [];
+  if (media.length > MAX_PHOTOS) throw new HttpError(400, `Add at most ${MAX_PHOTOS} photos.`);
+  const videos = media.filter((m) => String(m?.type).startsWith('video/'));
+  if (videos.length > 1 || (videos.length === 1 && media.length > 1)) {
+    throw new HttpError(400, 'Add either one clip or up to 3 photos, not both.');
+  }
+  return media.map((m) => {
+    const type = String(m?.type || '');
+    const size = Number(m?.size);
+    if (!MEDIA_TYPES.includes(type)) throw new HttpError(400, 'That file type is not supported.');
+    const limit = type.startsWith('video/') ? MAX_VIDEO_BYTES : MAX_PHOTO_BYTES;
+    if (!Number.isFinite(size) || size <= 0 || size > limit) {
+      throw new HttpError(400, type.startsWith('video/') ? 'That clip is too large.' : 'That photo is too large.');
+    }
+    const check = MEDIA_CHECKS.includes(m?.check) ? m.check : 'unknown';
+    return { type, size, check };
+  });
+}
+
+// An update someone adds to an existing report: words, photos, or both.
+export function validateUpdate(body) {
+  const caption = cleanText(body.caption, 280);
+  if (caption.length > 0 && caption.length < 3) throw new HttpError(400, 'Write a few more words, or leave it empty.');
+  const mediaSpec = validateMedia(body.media);
+  if (!caption && !mediaSpec.length) throw new HttpError(400, 'Add a photo, a clip or a few words.');
+  return {
+    caption: caption || null,
+    sensitive: Boolean(body.sensitive),
+    mediaSpec,
+    old_media: mediaSpec.some((m) => m.check === 'old'),
+  };
+}
+
+export function extFor(type) {
+  return type === 'image/jpeg' ? 'jpg' : type === 'video/mp4' ? 'mp4' : 'webm';
 }
 
 export function statusOf(r) {
@@ -169,9 +196,24 @@ export function fullShape(r, urls = {}, now = Date.now()) {
     caption: r.caption,
     sensitive: r.sensitive,
     falses: r.falses,
-    media_items: media.map((m) => ({ type: m.type, url: urls[m.path] || null })),
+    old_media: Boolean(r.old_media),
+    updates: r.updates || 0,
+    media_items: media.map((m) => ({ type: m.type, url: urls[m.path] || null, check: m.check || 'unknown' })),
+  };
+}
+
+export function updateShape(u, urls = {}) {
+  const media = Array.isArray(u.media) ? u.media : [];
+  return {
+    id: u.id,
+    created_at: u.created_at,
+    caption: u.caption,
+    sensitive: u.sensitive,
+    old_media: Boolean(u.old_media),
+    media_items: media.map((m) => ({ type: m.type, url: urls[m.path] || null, check: m.check || 'unknown' })),
   };
 }
 
 export const PUBLIC_COLUMNS =
-  'id,created_at,category,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,mod_override,confirms,falses';
+  'id,created_at,category,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,mod_override,confirms,falses,old_media,updates';
+export const UPDATE_COLUMNS = 'id,report_id,created_at,caption,media,sensitive,old_media,status';

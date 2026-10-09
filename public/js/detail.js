@@ -8,16 +8,18 @@ const page = document.getElementById('page');
 let current = null;
 let mediaIndex = 0;
 let revealed = false;
+const revealedUpdates = new Set();
 
 export async function openDetail(id) {
   current = null;
   mediaIndex = 0;
   revealed = false;
+  revealedUpdates.clear();
   mount(page, html`<section class="page" aria-label="Report">
     ${head()}
     <div class="page-scroll"><p class="empty">Loading report…</p></div></section>`);
   try {
-    const { reports } = await api.details([id]);
+    const { reports } = await api.detail(id);
     if (!reports.length) {
       mount(page.querySelector('.page-scroll'), html`<p class="empty">This report is no longer available. It may have been removed by a moderator.</p>`);
       return;
@@ -48,6 +50,7 @@ function render() {
     ${head()}
     <div class="page-scroll"><div class="wrap" style="padding-bottom:16px">
       ${media.length ? mediaBlock(media, r.sensitive) : ''}
+      ${r.old_media ? html`<div class="old-banner" role="note">${icon('clock', 18)}<span style="flex:1">The photo may be older than this report.</span>${tip('oldPhoto', 'What this warning means', 'inherit')}</div>` : ''}
       <div style="padding:18px 20px 0;display:flex;flex-direction:column;gap:12px">
         <div style="display:flex;gap:12px;align-items:center">
           <span class="ct lg ${c.tone}">${icon(c.icon, 22)}</span>
@@ -64,6 +67,7 @@ function render() {
         </div>
       </div>
       ${verifyBlock(r)}
+      ${updatesBlock(r)}
     </div></div>
     <div class="page-foot"><div class="wrap" style="display:flex;flex-direction:column;gap:10px">
       ${posted ? html`<div class="done-note">${icon('check', 20)}You posted this report</div>`
@@ -98,6 +102,31 @@ function mediaBlock(media, sensitive) {
       <span class="hero-tag" style="left:12px">${mediaIndex + 1} / ${media.length}</span>` : ''}
     <span class="hero-tag" style="right:12px">${icon('check', 13, 'style="stroke-width:2.6"')}Hidden data removed</span>
   </div>`;
+}
+
+function updatesBlock(r) {
+  const items = r.update_items || [];
+  return html`<section class="updates" aria-label="Updates from people nearby">
+    <div class="updates-head">
+      <span class="field-label" style="display:flex;align-items:center;gap:2px">Updates from people nearby${items.length ? ` (${items.length})` : ''} ${tip('updates', 'About updates')}</span>
+    </div>
+    ${items.length ? items.map((u, i) => html`<div class="update">
+      <span class="update-rail" aria-hidden="true"><i></i>${i < items.length - 1 ? html`<b></b>` : ''}</span>
+      <div class="update-body">
+        <span class="sub">${timeAgo(u.created_at)}${u.old_media ? html` · <span style="color:var(--amber-ink);font-weight:600">photo may be old</span>` : ''}</span>
+        ${u.caption ? html`<p style="margin:0;font-size:15px;line-height:1.5;white-space:pre-wrap">${u.caption}</p>` : ''}
+        ${u.media_items.some((m) => m.url) ? html`<div class="update-media">${u.media_items.filter((m) => m.url).map((m) => {
+          const blurred = u.sensitive && !revealedUpdates.has(u.id);
+          return html`<div class="cell ${blurred ? 'blurred' : ''}">
+            ${m.type.startsWith('video/') ? html`<video src="${m.url}" ${blurred ? '' : 'controls'} playsinline preload="metadata"></video>` : html`<img src="${m.url}" alt="Photo added by someone nearby" loading="lazy">`}
+            ${blurred ? html`<button type="button" data-reveal-update="${u.id}">Tap to view</button>` : ''}
+          </div>`;
+        })}</div>` : ''}
+        <span><button type="button" class="link-btn" data-flag-update="${u.id}">Flag this update</button></span>
+      </div>
+    </div>`) : html`<p class="sub" style="margin:0;line-height:1.5">Were you there too? Add your own photos or what you saw. It also counts as a confirmation.</p>`}
+    <a class="btn ghost" href="#/r/${r.id}/add" style="height:46px;font-size:15px">${icon('camera', 18)}Add photos or an update</a>
+  </section>`;
 }
 
 function verifyBlock(r) {
@@ -143,7 +172,20 @@ function bind() {
   q('#next')?.addEventListener('click', () => { mediaIndex = (mediaIndex + 1) % r.media_items.length; render(); });
   q('#confirm')?.addEventListener('click', () => vote('confirm'));
   q('#false')?.addEventListener('click', () => vote('false'));
-  q('#flag')?.addEventListener('click', openFlag);
+  q('#flag')?.addEventListener('click', () => openFlag((reason) => vote('flag', reason)));
+  page.querySelectorAll('[data-reveal-update]').forEach((b) => b.addEventListener('click', () => {
+    revealedUpdates.add(b.dataset.revealUpdate);
+    render();
+  }));
+  page.querySelectorAll('[data-flag-update]').forEach((b) => b.addEventListener('click', () => openFlag(async (reason) => {
+    try {
+      const res = await api.flagUpdate(b.dataset.flagUpdate, reason);
+      toast(res.hidden ? 'Thanks. That update is hidden while moderators review it.' : 'Thanks. A moderator will review it.');
+      if (res.hidden) openDetail(current.id);
+    } catch (err) {
+      toast(err.message);
+    }
+  })));
 }
 
 async function vote(kind, reason) {
@@ -156,7 +198,8 @@ async function vote(kind, reason) {
     Object.assign(r, { confirms: res.confirms, falses: res.falses, status: res.status });
     const light = state.byId.get(r.id);
     if (light) Object.assign(light, { confirms: res.confirms, status: res.status });
-    toast(kind === 'confirm' ? 'Thanks. Your confirmation helps others trust this report.'
+    if (res.counted === false) toast('This phone has already done that for this report.');
+    else toast(kind === 'confirm' ? 'Thanks. Your confirmation helps others trust this report.'
       : kind === 'false' ? 'Thanks. We count this when deciding if a report is disputed.'
         : 'Thanks. A moderator will review it.');
     if (res.hidden) {
@@ -169,7 +212,7 @@ async function vote(kind, reason) {
   render();
 }
 
-function openFlag() {
+function openFlag(onReason) {
   openModal({
     title: 'What is wrong with it?',
     body: html`<div role="radiogroup" aria-label="Reason">
@@ -186,7 +229,7 @@ function openFlag() {
       }));
       modal.querySelector('#send').addEventListener('click', () => {
         close();
-        vote('flag', reason);
+        onReason(reason);
       });
     },
   });

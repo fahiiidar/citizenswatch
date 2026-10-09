@@ -3,7 +3,8 @@ import { html, icon, tip, mount, toast, shareReport } from './ui.js';
 import { api, upload, mine } from './api.js';
 import { CATS, CAT_KEYS, TIME_OF_DAY, lagosDate } from './format.js';
 import { state } from './state.js';
-import { processPhoto, processClip, canProcessClips } from './media.js';
+import { processPhoto, processClip, canProcessClips, classifyTaken, takenLabel } from './media.js';
+import { mountCheck, getToken, resetCheck } from './turnstile.js';
 import * as mapMod from './map.js';
 import { showHome, runSearch, refresh } from './home.js';
 
@@ -24,6 +25,19 @@ function fresh() {
     checks: { face: false, forces: false, today: false },
     error: null, posting: false, progress: 0,
   };
+}
+
+// The day being reported, used to spot photos taken long before it.
+function eventDay() {
+  if (draft.when === 'date') return draft.date;
+  if (draft.when === 'yesterday') return lagosDate(Date.now() - 86400e3);
+  return lagosDate();
+}
+function checkOf(m) { return classifyTaken(m.takenAt, eventDay()); }
+function warnIfOld(m) {
+  if (checkOf(m) === 'old') {
+    toast(`This ${m.type.startsWith('video/') ? 'clip' : 'photo'} looks like it was taken on ${takenLabel(m.takenAt)}. If it isn't from this event, remove it. Old photos are marked for moderators.`, 7000);
+  }
 }
 
 const fuzz = (v) => Math.round((Math.floor(v / CELL) * CELL + CELL / 2) * 10000) / 10000;
@@ -315,6 +329,7 @@ function renderMedia() {
           ${m.preview ? (m.type.startsWith('video/') ? html`<video src="${m.preview}" muted playsinline></video>` : html`<img src="${m.preview}" alt="Your photo ${i + 1}">`) : ''}
           ${m.busy ? html`<div class="busy">${m.label}<div class="progress" style="width:70%"><i style="width:${Math.round((m.progress || 0) * 100)}%"></i></div></div>` : ''}
           ${m.busy ? '' : html`<button type="button" class="x" data-remove="${i}" aria-label="Remove">${icon('x', 13, 'style="stroke-width:2.8"')}</button>`}
+          ${!m.busy && checkOf(m) === 'old' ? html`<span class="old-tag">Taken ${takenLabel(m.takenAt)}</span>` : ''}
         </div>`)}
         ${!hasClip && photoCount < maxPhotos ? html`<label class="add-tile">${icon('camera', 22)}Photo<input type="file" accept="image/*" id="add-photo" ${photoCount < maxPhotos - 1 ? 'multiple' : ''}></label>` : ''}
         ${!draft.media.length ? html`<label class="add-tile">${icon('video', 22)}Clip<input type="file" accept="video/*" id="add-clip"></label>` : ''}
@@ -346,7 +361,7 @@ function renderMedia() {
   </section>`);
 
   bindMedia();
-  mountTurnstile();
+  mountCheck(page.querySelector('#turnstile')).then((err) => { if (err) toast(err); });
 }
 
 function bindMedia() {
@@ -360,6 +375,7 @@ function bindMedia() {
       renderMedia();
       try {
         Object.assign(item, await processPhoto(file), { busy: false });
+        warnIfOld(item);
       } catch (err) {
         draft.media.splice(draft.media.indexOf(item), 1);
         toast(err.message);
@@ -414,6 +430,7 @@ async function prepareClip(file) {
       },
     });
     Object.assign(item, out, { busy: false });
+    warnIfOld(item);
     if (out.trimmed) toast('Your clip was cut to the first 30 seconds.');
     if (draft.keepSound && !out.soundKept) toast('The sound could not be kept on this phone. The clip is silent.');
   } catch (err) {
@@ -421,54 +438,6 @@ async function prepareClip(file) {
     toast(err.message, 5000);
   }
   if (location.hash === '#/report/3') renderMedia();
-}
-
-// ---- Bot check (Cloudflare Turnstile) ----------------------------------------------
-let tsWidget = null;
-let tsToken = null;
-let tsWaiters = [];
-
-function loadTurnstile() {
-  if (window.turnstile) return Promise.resolve();
-  if (window._tsLoading) return window._tsLoading;
-  window._tsLoading = new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-    s.async = true;
-    s.onload = resolve;
-    s.onerror = () => reject(new Error('The security check could not load. Check your connection.'));
-    document.head.appendChild(s);
-  });
-  return window._tsLoading;
-}
-
-async function mountTurnstile() {
-  const key = state.config?.turnstileSiteKey;
-  const box = page.querySelector('#turnstile');
-  if (!key || !box) return;
-  try {
-    await loadTurnstile();
-    if (!page.contains(box)) return;
-    if (tsWidget !== null) { try { window.turnstile.remove(tsWidget); } catch { /* already gone */ } }
-    tsWidget = window.turnstile.render(box, {
-      sitekey: key,
-      appearance: 'interaction-only',
-      callback: (t) => { tsToken = t; tsWaiters.forEach((w) => w(t)); tsWaiters = []; },
-      'expired-callback': () => { tsToken = null; },
-      'error-callback': () => { tsToken = null; },
-    });
-  } catch (err) {
-    draft.error = err.message;
-  }
-}
-
-function getToken() {
-  if (!state.config?.turnstileSiteKey) return Promise.resolve(null);
-  if (tsToken) return Promise.resolve(tsToken);
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('The security check is taking too long. Tap Post again.')), 20000);
-    tsWaiters.push((t) => { clearTimeout(timer); resolve(t); });
-  });
 }
 
 // ---- Posting ---------------------------------------------------------------------------
@@ -491,7 +460,7 @@ async function post() {
       date: draft.date,
       timeOfDay: draft.when === 'now' ? null : draft.timeOfDay,
       sensitive: draft.sensitive,
-      media: draft.media.map((m) => ({ type: m.type, size: m.blob.size })),
+      media: draft.media.map((m) => ({ type: m.type, size: m.blob.size, check: checkOf(m) })),
       turnstileToken: token,
     });
     const total = draft.media.reduce((s, m) => s + m.blob.size, 0) || 1;
@@ -518,8 +487,7 @@ async function post() {
   } catch (err) {
     draft.posting = false;
     draft.error = err.message;
-    tsToken = null;
-    if (window.turnstile && tsWidget !== null) { try { window.turnstile.reset(tsWidget); } catch { /* ignore */ } }
+    resetCheck();
     renderMedia();
   }
 }

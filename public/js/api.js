@@ -21,6 +21,44 @@ export function deviceId() {
   return id;
 }
 
+// A one-way code describing this phone (screen, browser, graphics chip, time zone...).
+// It survives clearing the browser, so one phone counts once when confirming.
+// Only the code is sent; the server mixes it with the network and hashes it again.
+let fpPromise = null;
+export function fingerprint() {
+  if (!fpPromise) fpPromise = computeFingerprint().catch(() => null);
+  return fpPromise;
+}
+async function computeFingerprint() {
+  if (!crypto.subtle) return null;
+  const parts = [
+    navigator.userAgent, navigator.language, (navigator.languages || []).join(','), navigator.platform,
+    navigator.hardwareConcurrency, navigator.deviceMemory, navigator.maxTouchPoints,
+    screen.width, screen.height, screen.colorDepth, window.devicePixelRatio,
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+  ];
+  try {
+    const gl = document.createElement('canvas').getContext('webgl');
+    const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+    if (ext) parts.push(gl.getParameter(ext.UNMASKED_VENDOR_WEBGL), gl.getParameter(ext.UNMASKED_RENDERER_WEBGL));
+  } catch { /* not available */ }
+  try {
+    const c = document.createElement('canvas');
+    c.width = 220; c.height = 30;
+    const ctx = c.getContext('2d');
+    ctx.textBaseline = 'top';
+    ctx.font = '16px Arial';
+    ctx.fillStyle = '#d92d20';
+    ctx.fillRect(2, 2, 60, 20);
+    ctx.fillStyle = '#0e1a14';
+    ctx.fillText('CitizensWatch \u{1F6E1} 9ja', 4, 6);
+    parts.push(c.toDataURL());
+  } catch { /* not available */ }
+  const data = new TextEncoder().encode(parts.join('|'));
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 async function request(path, { method = 'GET', body, headers = {}, timeout = 20000 } = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeout);
@@ -59,9 +97,20 @@ export const api = {
     return request(`/api/reports?${p}`);
   },
   details: (ids) => request(`/api/reports?ids=${ids.slice(0, 40).join(',')}`),
-  create: (payload) => request('/api/reports', { method: 'POST', body: { ...payload, device: deviceId() }, timeout: 30000 }),
-  finalize: (id, token) => request('/api/finalize', { method: 'POST', body: { id, token } }),
-  vote: (id, kind, reason) => request('/api/vote', { method: 'POST', body: { id, kind, reason, device: deviceId() } }),
+  detail: (id) => request(`/api/reports?ids=${id}&updates=1`),
+  create: async (payload) => request('/api/reports', {
+    method: 'POST', body: { ...payload, device: deviceId(), fp: await fingerprint() }, timeout: 30000,
+  }),
+  finalize: (id, token, kind) => request('/api/finalize', { method: 'POST', body: { id, token, kind } }),
+  vote: async (id, kind, reason) => request('/api/vote', {
+    method: 'POST', body: { id, kind, reason, device: deviceId(), fp: await fingerprint() },
+  }),
+  addUpdate: async (payload) => request('/api/update', {
+    method: 'POST', body: { ...payload, action: 'create', device: deviceId(), fp: await fingerprint() }, timeout: 30000,
+  }),
+  flagUpdate: (updateId, reason) => request('/api/update', {
+    method: 'POST', body: { action: 'flag', updateId, reason, device: deviceId() },
+  }),
   search: (q, center) => {
     const p = new URLSearchParams({ q });
     if (center) { p.set('lat', center.lat.toFixed(3)); p.set('lng', center.lng.toFixed(3)); }

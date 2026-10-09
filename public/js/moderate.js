@@ -8,6 +8,7 @@ const QUEUES = [
   ['flagged', 'Flagged'],
   ['media', 'New with photos'],
   ['disputed', 'Disputed'],
+  ['updates', 'Added updates'],
   ['hidden', 'Hidden'],
   ['recent', 'All recent'],
 ];
@@ -80,9 +81,12 @@ function render() {
       ${QUEUES.map(([k, label]) => html`<button type="button" class="tab" role="tab" data-q="${k}" aria-selected="${queue === k}">${label}
         ${k === 'flagged' ? html`<span class="cnt" style="${c.flagged ? 'background:var(--red-soft);color:var(--red-ink)' : ''}">${c.flagged}</span>` : ''}
         ${k === 'media' ? html`<span class="cnt">${c.media}</span>` : ''}
-        ${k === 'disputed' ? html`<span class="cnt">${c.disputed}</span>` : ''}</button>`)}
+        ${k === 'disputed' ? html`<span class="cnt">${c.disputed}</span>` : ''}
+        ${k === 'updates' ? html`<span class="cnt">${c.updates || 0}</span>` : ''}</button>`)}
     </div>
-    ${data.reports.length ? data.reports.map(card) : html`<p class="empty">Nothing waiting here.</p>`}
+    ${queue === 'updates'
+      ? (data.updates.length ? data.updates.map(updateCard) : html`<p class="empty">No new updates to review.</p>`)
+      : (data.reports.length ? data.reports.map(card) : html`<p class="empty">Nothing waiting here.</p>`)}
   </div>`));
 
   page.querySelector('#logout')?.addEventListener('click', () => { store('cw_mod', null); renderLogin(); });
@@ -105,6 +109,8 @@ function card(r) {
         ${r.hidden ? html`<span class="badge past">Hidden${r.hidden_reason ? `: ${r.hidden_reason}` : ''}</span>` : html`<span class="badge ${r.status}">${STATUS[r.status]}</span>`}
         ${r.mod_override ? html`<span class="badge past">Set by moderator</span>` : ''}
         ${r.sensitive ? html`<span class="badge past">Blurred</span>` : ''}
+        ${r.old_media ? html`<span class="flagchip" style="background:var(--amber-soft);color:var(--amber-ink)">Photo may be old</span>` : ''}
+        ${r.updates ? html`<span class="badge past">${r.updates} update${r.updates === 1 ? '' : 's'}</span>` : ''}
         ${reasons.map(([k, n]) => html`<span class="flagchip">${(FLAG_REASONS[k] || k).split(',')[0]} · ${n}</span>`)}
         <span class="sub">${r.confirms} confirm · ${r.falses} false · phone ${r.device}</span>
       </span>
@@ -123,8 +129,38 @@ function card(r) {
   </article>`;
 }
 
+function updateCard(u) {
+  const cat = u.report ? (CATS[u.report.category] || CATS.other) : CATS.other;
+  const reasons = Object.entries(u.flag_reasons || {});
+  return html`<article class="mod-card">
+    ${u.media_items.length ? html`<div class="mod-media">${u.media_items.map((m) => (m.url
+      ? (m.type.startsWith('video/') ? html`<video src="${m.url}" controls muted playsinline preload="metadata"></video>` : html`<a href="${m.url}" target="_blank" rel="noopener"><img src="${m.url}" alt="Update photo"></a>`)
+      : ''))}</div>` : ''}
+    <div style="flex:999 1 360px;min-width:0;display:flex;flex-direction:column;gap:6px">
+      <span class="row-top"><span class="sub">Update on</span><a href="#/r/${u.report_id}" class="cat-${cat.tone}" style="font-weight:600;text-decoration:none">${cat.name}${u.report ? ` · ${whereLabel(u.report)}` : ''}</a><span class="sub">${timeAgo(u.created_at)}</span></span>
+      ${u.caption ? html`<span style="line-height:1.45;white-space:pre-wrap">${u.caption}</span>` : html`<span class="sub">Photos only</span>`}
+      <span class="row-top">
+        ${u.hidden ? html`<span class="badge past">Hidden${u.hidden_reason ? `: ${u.hidden_reason}` : ''}</span>` : ''}
+        ${u.sensitive ? html`<span class="badge past">Blurred</span>` : ''}
+        ${u.old_media ? html`<span class="flagchip" style="background:var(--amber-soft);color:var(--amber-ink)">Photo may be old</span>` : ''}
+        ${reasons.map(([k, n]) => html`<span class="flagchip">${(FLAG_REASONS[k] || k).split(',')[0]} · ${n}</span>`)}
+        <span class="sub">phone ${u.device}</span>
+      </span>
+    </div>
+    <div class="mod-actions">
+      ${u.hidden
+        ? html`<button type="button" class="act pri" data-act="restore" data-target="update" data-id="${u.id}">Restore</button>`
+        : html`<button type="button" class="act" data-act="approve" data-target="update" data-id="${u.id}">Approve</button>
+          <button type="button" class="act pri" data-act="hide" data-target="update" data-id="${u.id}">Hide</button>`}
+      ${u.media_items.length ? html`<button type="button" class="act" data-act="sensitive" data-target="update" data-value="${u.sensitive ? '' : '1'}" data-id="${u.id}">${u.sensitive ? 'Unblur' : 'Blur media'}</button>` : ''}
+      <button type="button" class="act danger" data-act="block" data-target="update" data-id="${u.id}">Block phone</button>
+      <button type="button" class="act danger" data-act="delete" data-target="update" data-id="${u.id}">${confirmDelete === u.id ? 'Tap again to delete' : 'Delete'}</button>
+    </div>
+  </article>`;
+}
+
 async function act(btn) {
-  const { act: action, id } = btn.dataset;
+  const { act: action, id, target } = btn.dataset;
   if (action === 'delete' && confirmDelete !== id) {
     confirmDelete = id;
     render();
@@ -136,7 +172,7 @@ async function act(btn) {
   if (action === 'sensitive') value = btn.dataset.value === '1';
   btn.disabled = true;
   try {
-    await api.modAct(store('cw_mod'), { id, action, value });
+    await api.modAct(store('cw_mod'), { id, action, value, target });
     toast({
       approve: 'Approved.', hide: 'Hidden from the map.', restore: 'Back on the map.', delete: 'Deleted for good.',
       block: 'Phone blocked and its reports hidden.', sensitive: 'Updated.', override: 'Status updated.',

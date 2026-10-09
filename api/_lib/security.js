@@ -14,6 +14,15 @@ export function deviceHash(cfg, deviceId) {
   return hashWith(cfg.hashSecret, `device:${deviceId}`);
 }
 
+// A code for "this kind of phone on this network". The phone sends a one-way
+// fingerprint of its own features; we mix it with the network and hash again.
+// Clearing the browser does not change it, and real people with the same phone
+// model are rarely on the same network at the same moment.
+export function netFp(cfg, req, fp) {
+  if (typeof fp !== 'string' || !/^[a-f0-9]{64}$/.test(fp)) return null;
+  return hashWith(cfg.hashSecret, `nf:${fp}|${clientIp(req)}`);
+}
+
 export function ipHash(cfg, req) {
   return hashWith(cfg.hashSecret, `ip:${clientIp(req)}`);
 }

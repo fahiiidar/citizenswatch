@@ -296,6 +296,25 @@ h1.big { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.6px; l
 .progress { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .progress i { display: block; height: 100%; background: var(--blue); width: 0; transition: width .2s; }
 
+/* Photo-age warning */
+.old-tag { position: absolute; left: 6px; right: 6px; bottom: 6px; background: var(--amber-ink); color: var(--white); font-size: 10.5px; font-weight: 600; border-radius: 6px; padding: 3px 5px; text-align: center; }
+.old-banner { display: flex; align-items: center; gap: 8px; margin: 10px 16px 0; padding: 10px 12px; border-radius: 12px; background: var(--amber-soft); color: var(--amber-ink); font-size: 13.5px; font-weight: 500; line-height: 1.4; }
+
+/* Updates added by other people */
+.updates { margin: 18px 20px 0; display: flex; flex-direction: column; gap: 12px; }
+.updates-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.update { display: flex; gap: 12px; }
+.update-rail { display: flex; flex-direction: column; align-items: center; flex: none; width: 12px; padding-top: 6px; }
+.update-rail i { width: 10px; height: 10px; border-radius: 5px; background: var(--blue); }
+.update-rail b { flex: 1; width: 2px; background: var(--line); margin-top: 4px; }
+.update-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding-bottom: 6px; }
+.update-media { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.update-media .cell { position: relative; height: 110px; border-radius: 12px; overflow: hidden; background: #2A2422; }
+.update-media img, .update-media video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.update-media .cell.blurred img, .update-media .cell.blurred video { filter: blur(16px) brightness(.6); transform: scale(1.2); }
+.update-media .cell button { position: absolute; inset: 0; border: 0; background: transparent; color: var(--white); font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+.link-btn { border: 0; background: transparent; padding: 0; color: var(--muted); font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
+
 /* Detail */
 .hero-media { margin: 0 16px; height: 240px; border-radius: 18px; position: relative; overflow: hidden; background: #2A2422; color: var(--white); }
 .hero-media img, .hero-media video { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }

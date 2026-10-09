@@ -6,6 +6,7 @@ const B = process.env.BASE || 'http://localhost:3000';
 const dev = (n) => `device-${String(n).padStart(4, '0')}-abcdefghijkl`;
 const MOD = { 'X-Moderator-Key': 'local-moderator-key-123' };
 let passed = 0;
+let r2;
 
 async function call(path, { method = 'GET', body, headers = {}, ip } = {}) {
   const res = await fetch(B + path, {
@@ -137,5 +138,74 @@ ok('a blocked phone cannot post', r.status === 403);
 r = await call('/api/mod', { method: 'POST', headers: MOD, body: { id: id3, action: 'delete' } });
 r = await call(`/api/reports?ids=${id3}`);
 ok('delete removes the report', r.data.reports.length === 0);
+
+// ---- Phone fingerprint: one phone counts once, even after clearing its browser ----
+const FP_A = 'a'.repeat(64);
+const FP_B = 'b'.repeat(64);
+r = await call('/api/reports', { method: 'POST', body: { ...report, category: 'robbery', device: dev(40), fp: FP_A }, ip: '8.8.8.1' });
+const id4 = r.data.id;
+r = await call('/api/vote', { method: 'POST', body: { id: id4, kind: 'confirm', device: dev(41), fp: FP_A }, ip: '8.8.8.1' });
+ok('poster cannot confirm own report after clearing the browser (same phone, same network)', r.status === 400);
+r = await call('/api/vote', { method: 'POST', body: { id: id4, kind: 'confirm', device: dev(42), fp: FP_B }, ip: '9.9.9.9' });
+ok('a different phone can confirm', r.data.counted === true && r.data.confirms === 1);
+r = await call('/api/vote', { method: 'POST', body: { id: id4, kind: 'confirm', device: dev(43), fp: FP_B }, ip: '9.9.9.9' });
+ok('the same phone with a cleared browser is not counted twice', r.data.counted === false && r.data.confirms === 1);
+r = await call('/api/vote', { method: 'POST', body: { id: id4, kind: 'confirm', device: dev(44), fp: FP_B }, ip: '9.9.9.10' });
+ok('the same phone model on a different network still counts (real different people)', r.data.counted === true && r.data.confirms === 2);
+r = await call('/api/vote', { method: 'POST', body: { id: id4, kind: 'false', device: dev(45), fp: FP_B }, ip: '9.9.9.9' });
+ok('switching to "false" with a cleared browser removes the earlier confirmation', r.data.confirms === 1 && r.data.falses === 1);
+
+// ---- Old-photo check is stored and shown ----
+const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+r = await call('/api/reports', { method: 'POST', body: { ...report, category: 'attack', device: dev(50), fp: 'c'.repeat(64), media: [{ type: 'image/jpeg', size: jpg.length, check: 'old' }] }, ip: '10.0.0.1' });
+const id5 = r.data.id;
+await fetch(r.data.uploads[0].url, { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: jpg });
+await call('/api/finalize', { method: 'POST', body: { id: id5, token: r.data.finalizeToken } });
+r = await call(`/api/reports?ids=${id5}`);
+ok('a report with an old photo is marked for everyone to see', r.data.reports[0].old_media === true);
+r = await call('/api/mod?queue=media', { headers: MOD });
+ok('old-photo reports come first in the moderators’ photo queue', r.data.reports[0].id === id5 && r.data.reports[0].old_media === true);
+
+// ---- Updates added by other people ----
+r = await call('/api/update', { method: 'POST', body: { action: 'create', reportId: id4, caption: 'x', device: dev(60) }, ip: '11.0.0.1' });
+ok('an update needs a photo or a few words', r.status === 400);
+r = await call('/api/update', { method: 'POST', body: { action: 'create', reportId: id4, caption: 'Still happening, shops closed now', device: dev(60), fp: 'd'.repeat(64) }, ip: '11.0.0.1' });
+ok('a text update posts straight away', r.status === 201 && r.data.uploads.length === 0);
+const upd1 = r.data.id;
+r = await call(`/api/reports?ids=${id4}&updates=1`);
+ok('the report shows the update and its count', r.data.reports[0].updates === 1 && r.data.reports[0].update_items[0].caption.includes('shops closed'));
+ok('adding an update counts as a confirmation', r.data.reports[0].confirms === 2);
+r = await call('/api/update', { method: 'POST', body: { action: 'create', reportId: id4, caption: 'Me again from my own report', device: dev(40), fp: FP_A }, ip: '8.8.8.1' });
+r = await call(`/api/reports?ids=${id4}`);
+ok('the poster adding an update does not confirm their own report', r.data.reports[0].confirms === 2 && r.data.reports[0].updates === 2);
+
+r = await call('/api/update', { method: 'POST', body: { action: 'create', reportId: id4, device: dev(61), fp: 'e'.repeat(64), media: [{ type: 'image/jpeg', size: jpg.length, check: 'ok' }] }, ip: '11.0.0.2' });
+const upd2 = r.data.id;
+ok('a photo update waits for its upload', r.status === 201 && r.data.uploads.length === 1);
+r2 = await call(`/api/reports?ids=${id4}&updates=1`);
+ok('a photo update is hidden until the photo arrives', r2.data.reports[0].update_items.length === 2);
+await fetch(r.data.uploads[0].url, { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: jpg });
+let fin2 = await call('/api/finalize', { method: 'POST', body: { id: upd2, token: r.data.finalizeToken, kind: 'update' } });
+ok('finalizing the photo update publishes it', fin2.status === 200);
+r = await call(`/api/reports?ids=${id4}&updates=1`);
+const photoUpd = r.data.reports[0].update_items.find((u) => u.id === upd2);
+ok('the photo update has a working view link', photoUpd && photoUpd.media_items[0].url && (await fetch(photoUpd.media_items[0].url)).ok);
+ok('the report now has 3 updates', r.data.reports[0].updates === 3);
+
+for (const n of [70, 71, 72, 73, 74]) {
+  r = await call('/api/update', { method: 'POST', body: { action: 'flag', updateId: upd1, reason: 'spam', device: dev(n) }, ip: `12.0.0.${n}` });
+}
+ok('5 flags hide an update', r.data.hidden === true);
+r = await call(`/api/reports?ids=${id4}&updates=1`);
+ok('a hidden update disappears and the count drops', r.data.reports[0].updates === 2 && !r.data.reports[0].update_items.some((u) => u.id === upd1));
+r = await call('/api/mod?queue=updates', { headers: MOD });
+const modUpd = r.data.updates.find((u) => u.id === upd1);
+ok('moderators see the hidden update with its flag reasons and parent report', modUpd && modUpd.hidden && modUpd.flag_reasons.spam === 5 && modUpd.report.category === 'robbery');
+r = await call('/api/mod', { method: 'POST', headers: MOD, body: { id: upd1, action: 'restore', target: 'update' } });
+r = await call(`/api/reports?ids=${id4}&updates=1`);
+ok('a moderator can restore an update', r.data.reports[0].updates === 3);
+r = await call('/api/mod', { method: 'POST', headers: MOD, body: { id: id4, action: 'delete' } });
+r = await call(`/api/reports?ids=${id4}`);
+ok('deleting a report also removes its updates', r.data.reports.length === 0);
 
 console.log(`\n${passed} checks passed`);

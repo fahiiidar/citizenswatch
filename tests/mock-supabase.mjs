@@ -3,7 +3,7 @@
 import http from 'node:http';
 
 export function startMock(port = 54321) {
-  const tables = { reports: [], votes: [], rate_events: [], blocked_devices: [], mod_log: [] };
+  const tables = { reports: [], votes: [], rate_events: [], blocked_devices: [], mod_log: [], report_updates: [], update_flags: [] };
   const files = new Map(); // path -> { type, body }
   let seq = 1;
 
@@ -36,6 +36,13 @@ export function startMock(port = 54321) {
   }
   function matches(row, filters) {
     return filters.every(([col, op, raw]) => {
+      if (col === 'or') {
+        const parts = raw.replace(/^\(|\)$/g, '').split(',').map((x) => {
+          const [c, o, ...v] = x.split('.');
+          return [c, o, v.join('.')];
+        });
+        return parts.some((f) => matches(row, [f]));
+      }
       const v = row[col];
       if (op === 'in') {
         const list = raw.replace(/^\(|\)$/g, '').split(',').map((s) => s.replace(/^"|"$/g, ''));
@@ -65,6 +72,7 @@ export function startMock(port = 54321) {
       if (k === 'select') select = v.split(',');
       else if (k === 'order') order = v.split(',').map((o) => o.split('.'));
       else if (k === 'limit') limit = Number(v);
+      else if (k === 'or') filters.push(['or', 'or', v]);
       else {
         const i = v.indexOf('.');
         filters.push([k, v.slice(0, i), v.slice(i + 1)]);
@@ -85,13 +93,22 @@ export function startMock(port = 54321) {
     reports: () => ({
       created_at: new Date().toISOString(), media: [], sensitive: false, status: 'pending', reviewed: false,
       mod_override: null, confirms: 0, falses: 0, flags: 0, hidden_reason: null, time_of_day: null, area_label: null,
+      old_media: false, net_fp: null, updates: 0,
     }),
-    votes: () => ({ created_at: new Date().toISOString(), reason: null }),
+    report_updates: () => ({
+      created_at: new Date().toISOString(), media: [], sensitive: false, old_media: false, status: 'pending',
+      reviewed: false, flags: 0, hidden_reason: null, caption: null, net_fp: null,
+    }),
+    update_flags: () => ({ created_at: new Date().toISOString() }),
+    votes: () => ({ created_at: new Date().toISOString(), reason: null, net_fp: null }),
     rate_events: () => ({ id: seq++, created_at: new Date().toISOString() }),
     blocked_devices: () => ({ created_at: new Date().toISOString() }),
     mod_log: () => ({ id: seq++, created_at: new Date().toISOString() }),
   };
-  const KEYS = { reports: ['id'], votes: ['report_id', 'device_hash', 'kind'], blocked_devices: ['device_hash'] };
+  const KEYS = {
+    reports: ['id'], votes: ['report_id', 'device_hash', 'kind'], blocked_devices: ['device_hash'],
+    report_updates: ['id'], update_flags: ['update_id', 'device_hash'],
+  };
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://localhost:${port}`);
@@ -211,7 +228,10 @@ export function startMock(port = 54321) {
       const removed = table.filter((r) => matches(r, q.filters));
       tables[name] = keep;
       if (name === 'votes') removed.forEach((v) => recount(v.report_id));
-      if (name === 'reports') tables.votes = tables.votes.filter((v) => keep.some((r) => r.id === v.report_id));
+      if (name === 'reports') {
+        tables.votes = tables.votes.filter((v) => keep.some((r) => r.id === v.report_id));
+        tables.report_updates = tables.report_updates.filter((u) => keep.some((r) => r.id === u.report_id));
+      }
       return json(res, 204);
     }
     return json(res, 405, {});

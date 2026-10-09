@@ -5,6 +5,7 @@ import { toast, mount, html } from './ui.js';
 import * as mapMod from './map.js';
 import { renderHome, refresh, openArea, showHome, setSnap } from './home.js';
 import { openDetail } from './detail.js';
+import { openAddUpdate } from './addupdate.js';
 import { openReport, leaveReport } from './report.js';
 import { openModerate } from './moderate.js';
 
@@ -51,6 +52,7 @@ function route() {
   }
   lastRoute = hash;
 
+  if (parts[0] === 'r' && parts[1] && parts[2] === 'add') return openAddUpdate(parts[1]);
   if (parts[0] === 'r' && parts[1]) return openDetail(parts[1]);
   if (parts[0] === 'report') return openReport(parts[1] || '1');
   if (parts[0] === 'moderate') { showHome(false); return openModerate(); }

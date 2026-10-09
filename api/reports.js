@@ -2,8 +2,10 @@ import { randomUUID, randomBytes } from 'node:crypto';
 import { route, send, readJson, queryOf, HttpError } from './_lib/http.js';
 import { requireServerConfig } from './_lib/env.js';
 import { select, insert, signUpload, signDownloads, inList } from './_lib/supa.js';
-import { deviceHash, ipHash, verifyHuman, rateLimit, assertNotBlocked } from './_lib/security.js';
-import { CATEGORIES, PUBLIC_COLUMNS, validateNewReport, mapShape, fullShape } from './_lib/reports.js';
+import { deviceHash, ipHash, netFp, verifyHuman, rateLimit, assertNotBlocked } from './_lib/security.js';
+import {
+  CATEGORIES, PUBLIC_COLUMNS, UPDATE_COLUMNS, validateNewReport, mapShape, fullShape, updateShape, extFor,
+} from './_lib/reports.js';
 
 const RANGES = { '1h': 1, '24h': 24, '7d': 24 * 7, '30d': 24 * 30 };
 const MAP_COLUMNS = 'id,created_at,category,is_now,occurred_at,place_label,area_label,lat,lng,media,mod_override,confirms,falses';
@@ -23,9 +25,16 @@ async function list(cfg, req, res) {
     const ids = q.get('ids').split(',').filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, 40);
     if (!ids.length) return send(res, 200, { reports: [] });
     const rows = await select(cfg, 'reports', `select=${PUBLIC_COLUMNS}&status=eq.visible&id=in.${inList(ids)}`);
-    const paths = rows.flatMap((r) => (r.media || []).map((m) => m.path));
+    // The detail screen also shows the updates other people added.
+    const withUpdates = q.get('updates') === '1' && rows.length === 1;
+    const updates = withUpdates
+      ? await select(cfg, 'report_updates',
+        `select=${UPDATE_COLUMNS}&report_id=eq.${rows[0].id}&status=eq.visible&order=created_at.asc&limit=100`)
+      : [];
+    const paths = [...rows, ...updates].flatMap((r) => (r.media || []).map((m) => m.path));
     const urls = await signDownloads(cfg, paths, 3600);
     const byId = new Map(rows.map((r) => [r.id, fullShape(r, urls, now)]));
+    if (withUpdates) byId.get(rows[0].id).update_items = updates.map((u) => updateShape(u, urls));
     return send(res, 200, { reports: ids.map((id) => byId.get(id)).filter(Boolean) });
   }
 
@@ -85,10 +94,7 @@ async function create(cfg, req, res) {
     'Too many reports from this network in the last hour. Please wait a little.');
 
   const id = randomUUID();
-  const media = report.mediaSpec.map((m, i) => ({
-    path: `${id}/${i}.${m.type === 'image/jpeg' ? 'jpg' : m.type === 'video/mp4' ? 'mp4' : 'webm'}`,
-    type: m.type,
-  }));
+  const media = report.mediaSpec.map((m, i) => ({ path: `${id}/${i}.${extFor(m.type)}`, type: m.type, check: m.check }));
   const finalizeToken = media.length ? randomBytes(24).toString('hex') : null;
 
   await insert(cfg, 'reports', [{
@@ -104,8 +110,10 @@ async function create(cfg, req, res) {
     time_of_day: report.time_of_day,
     occurred_at: report.occurred_at,
     sensitive: report.sensitive,
+    old_media: report.old_media,
     media,
     device_hash: dHash,
+    net_fp: netFp(cfg, req, body.fp),
     finalize_token: finalizeToken,
     // Reports with files stay hidden until every file has arrived.
     status: media.length ? 'pending' : 'visible',

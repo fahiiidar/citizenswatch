@@ -91,6 +91,14 @@ export const TIPS = {
     title: 'Sensitive media',
     text: 'Turn this on if your photo or clip shows injuries or bodies. It will be blurred until someone chooses to view it.',
   },
+  oldPhoto: {
+    title: 'Photo may be old',
+    text: 'The phone that posted this found that the photo or clip was taken at least a day before the event. It could be recycled from an older incident. Moderators review these first.',
+  },
+  updates: {
+    title: 'Updates from others',
+    text: 'People nearby can add their own photos or words to a report. Each update also counts as a confirmation. Updates are checked the same way as reports.',
+  },
   anonymous: {
     title: 'How you stay anonymous',
     text: 'There is no account. We never store your name, phone number, exact location or internet address.',

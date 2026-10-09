@@ -485,7 +485,8 @@ function cardFor(r) {
     <span class="row-main" style="gap:4px">
       <span class="row-top"><b>${c.name}</b>${r.live ? html`<span class="badge live">Live</span>` : ''}</span>
       <span class="clamp" style="font-size:14px;line-height:1.4;color:var(--ink-2)">${r.caption}</span>
-      <span class="row-top sub"><span class="badge ${r.status}">${STATUS[r.status]}</span>${r.confirms} confirmation${r.confirms === 1 ? '' : 's'} · ${shortAgo(r.occurred_at)}</span>
+      <span class="row-top sub"><span class="badge ${r.status}">${STATUS[r.status]}</span>${r.confirms} confirmation${r.confirms === 1 ? '' : 's'}${r.updates ? ` · ${r.updates} update${r.updates === 1 ? '' : 's'}` : ''} · ${shortAgo(r.occurred_at)}</span>
+      ${r.old_media ? html`<span class="sub" style="color:var(--amber-ink);font-weight:600">Photo may be old</span>` : ''}
     </span>
     ${thumb}
   </a>`;
