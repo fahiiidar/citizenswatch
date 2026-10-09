@@ -151,9 +151,13 @@ async function scrape(cfg, q, res) {
   let items = [];
   try { items = JSON.parse(text); } catch { /* not JSON */ }
   const raw = q.get('raw') === '1';
+  if (!Array.isArray(items)) items = [];
+  // Drop filler rows without a link, and repeats of the same post.
+  const seen = new Set();
+  const list = raw ? items : items.map(compact).filter((it) => it.url && !seen.has(it.url) && seen.add(it.url));
   return send(res, 200, {
-    count: items.length,
-    items: items.map((it) => (raw ? it : compact(it))),
+    count: list.length,
+    items: list,
   });
 }
 
