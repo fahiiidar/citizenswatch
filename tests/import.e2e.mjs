@@ -28,6 +28,24 @@ ok('"evening" is never later than the post itself', rep.occurred_at === '2026-10
 r = await get('/api/reports?range=30d');
 ok('it shows on the map', r.data.reports.some((x) => x.id === id));
 
+// Adding photos to a report that was imported without any.
+{
+  const fs = await import('node:fs');
+  const f = new URL('../data/imports/test-batch.json', import.meta.url);
+  const b = JSON.parse(fs.readFileSync(f, 'utf8'));
+  b[1].media = [{ url: 'http://localhost:54321/fake-media/photo.jpg', type: 'image/jpeg' }];
+  fs.writeFileSync(new URL('../data/imports/test-refresh.json', import.meta.url), JSON.stringify(b));
+  let rr = await get(`/api/import?key=${KEY}&batch=test-refresh&from=1&count=1`);
+  ok('without refresh, an imported report is left alone', rr.data.skipped.length === 1);
+  rr = await get(`/api/import?key=${KEY}&batch=test-refresh&from=1&count=1&refresh=1`);
+  ok('with refresh, photos are added to an imported report that had none', rr.data.imported[0].addedMedia === 1);
+  const d = await get(`/api/reports?ids=${rr.data.imported[0].id}`);
+  ok('the added photo shows on the report', d.data.reports[0].media_items.length === 1);
+  rr = await get(`/api/import?key=${KEY}&batch=test-refresh&from=0&count=1&refresh=1`);
+  ok('a report that already has photos is not touched', rr.data.skipped.length === 1);
+  fs.unlinkSync(new URL('../data/imports/test-refresh.json', import.meta.url));
+}
+
 const MOD = { 'X-Moderator-Key': 'local-moderator-key-123' };
 let m = await fetch(`${B}/api/mod?queue=recent`, { headers: MOD }).then((x) => x.json());
 const mr = m.reports.find((x) => x.id === id);

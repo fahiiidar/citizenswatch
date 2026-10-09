@@ -15,7 +15,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { route, send, queryOf, HttpError } from './_lib/http.js';
 import { requireServerConfig } from './_lib/env.js';
-import { select, insert, uploadFile } from './_lib/supa.js';
+import { select, insert, update, uploadFile } from './_lib/supa.js';
 import { CATEGORIES, AGENCIES, TIMES_OF_DAY, fuzz, extFor, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES } from './_lib/reports.js';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -159,9 +159,11 @@ export default route(['GET'], async (req, res) => {
     const problems = checkItem(it);
     if (problems.length) { out.failed.push({ source: it.source_url, reason: `bad ${problems.join(', ')}` }); continue; }
     const id = idFor(it.source_url);
-    const exists = await select(cfg, 'reports', `select=id&id=eq.${id}`);
-    if (exists.length) { out.skipped.push(id); continue; }
-    if (dry) { out.imported.push({ id, dry: true }); continue; }
+    const exists = await select(cfg, 'reports', `select=id,media&id=eq.${id}`);
+    // Already imported: with refresh=1, add photos to it if it has none yet.
+    const addTo = exists.length && q.get('refresh') === '1' && !(exists[0].media || []).length && (it.media || []).length;
+    if (exists.length && !addTo) { out.skipped.push(id); continue; }
+    if (dry) { out.imported.push({ id, dry: true, ...(addTo ? { addMedia: true } : {}) }); continue; }
 
     const media = [];
     const mediaErrors = [];
@@ -174,6 +176,12 @@ export default route(['GET'], async (req, res) => {
       } catch (err) {
         mediaErrors.push(err.message);
       }
+    }
+
+    if (addTo) {
+      if (media.length) await update(cfg, 'reports', `id=eq.${id}`, { media, sensitive: Boolean(it.sensitive), reviewed: false });
+      out.imported.push({ id, addedMedia: media.length, ...(mediaErrors.length ? { mediaErrors } : {}) });
+      continue;
     }
 
     try {

@@ -51,7 +51,20 @@
   "occurred_on": "2026-10-06",
   "time_of_day": null,
   "sensitive": true,
-  "media": []
+  "media": [
+   {
+    "url": "https://pbs.twimg.com/media/HUGmgF2WEAAfW_u.jpg?format=jpg&name=medium",
+    "type": "image/jpeg"
+   },
+   {
+    "url": "https://pbs.twimg.com/media/HUGmgGAXwAAbVqB.jpg?format=jpg&name=medium",
+    "type": "image/jpeg"
+   },
+   {
+    "url": "https://pbs.twimg.com/media/HUGmgF8W0AARB3r.jpg?format=jpg&name=medium",
+    "type": "image/jpeg"
+   }
+  ]
  },
  {
   "source_url": "https://x.com/Mr_Emmcap__/status/2108086199260967268",
@@ -249,6 +262,11 @@
   "occurred_on": "2026-09-30",
   "time_of_day": null,
   "sensitive": true,
-  "media": []
+  "media": [
+   {
+    "url": "https://pbs.twimg.com/media/HTfCIqsWwAAAtxk.jpg?format=jpg&name=medium",
+    "type": "image/jpeg"
+   }
+  ]
  }
 ]
