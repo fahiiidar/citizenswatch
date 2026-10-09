@@ -46,6 +46,21 @@ ok('it shows on the map', r.data.reports.some((x) => x.id === id));
   fs.unlinkSync(new URL('../data/imports/test-refresh.json', import.meta.url));
 }
 
+// A single report passed in the address (used by the daily scheduled import).
+{
+  const item = {
+    source_url: 'https://x.com/someone/status/1000000000000000099', posted_at: '2026-10-09T06:00:00Z', category: 'road',
+    caption: 'Original post text: road blocked by armed men near the junction this morning.', place_label: 'Kaduna Road',
+    area_label: 'Kaduna State', lat: 10.6, lng: 7.4, occurred_on: '2026-10-09', time_of_day: 'morning', media: [],
+  };
+  const enc = Buffer.from(JSON.stringify(item)).toString('base64url');
+  let rr = await get(`/api/import?key=${KEY}&item=${enc}`);
+  ok('a single report in the address is imported', rr.data.imported.length === 1 && rr.data.batch === 'inline');
+  rr = await get(`/api/import?key=${KEY}&item=${enc}`);
+  ok('and not twice', rr.data.skipped.length === 1);
+  ok('bad item data is refused', (await get(`/api/import?key=${KEY}&item=%%%`)).status === 400);
+}
+
 const MOD = { 'X-Moderator-Key': 'local-moderator-key-123' };
 let m = await fetch(`${B}/api/mod?queue=recent`, { headers: MOD }).then((x) => x.json());
 const mr = m.reports.find((x) => x.id === id);

@@ -94,6 +94,36 @@ export function mediaIn(item) {
   return [...found];
 }
 
+// A small, readable version of a scraped post: who, when, what, and its media
+// (photos at medium size; for a video, the best version up to about 1 Mbps).
+export function compact(it) {
+  const a = it.author || {};
+  const photos = [];
+  let video = null;
+  for (const m of (it.extendedEntities && it.extendedEntities.media) || []) {
+    if (m.type === 'photo' && m.media_url_https) photos.push(`${m.media_url_https}?format=jpg&name=medium`);
+    if ((m.type === 'video' || m.type === 'animated_gif') && !video) {
+      const vs = ((m.video_info && m.video_info.variants) || []).filter((v) => v.content_type === 'video/mp4')
+        .sort((x, y) => (x.bitrate || 0) - (y.bitrate || 0));
+      const pick = vs.filter((v) => (v.bitrate || 0) <= 1000000).pop() || vs[0];
+      if (pick) video = { url: pick.url, seconds: Math.round(((m.video_info || {}).duration_millis || 0) / 1000) };
+    }
+  }
+  return {
+    url: it.url || it.twitterUrl || it.postUrl || null,
+    date: it.createdAt || it.created_at || it.date || it.timestamp || null,
+    user: a.userName || null,
+    name: a.name || null,
+    followers: a.followers ?? null,
+    text: it.text || it.full_text || it.message || '',
+    lang: it.lang || null,
+    sensitive: Boolean(it.possiblySensitive),
+    retweet: Boolean(it.retweeted_tweet),
+    photos: photos.length ? photos : mediaIn(it).filter((u) => /pbs\.twimg\.com\/media\//.test(u)),
+    video,
+  };
+}
+
 async function scrape(cfg, q, res) {
   const token = process.env.APIFY_TOKEN || '';
   if (!token) throw new HttpError(400, 'APIFY_TOKEN is not set in Vercel.');
@@ -123,14 +153,7 @@ async function scrape(cfg, q, res) {
   const raw = q.get('raw') === '1';
   return send(res, 200, {
     count: items.length,
-    items: items.map((it) => (raw ? it : {
-      text: it.text || it.full_text || it.fullText || it.message || it.postText || '',
-      date: it.createdAt || it.created_at || it.date || it.time || it.timestamp || null,
-      url: it.url || it.twitterUrl || it.tweetUrl || it.postUrl || it.link || null,
-      place: it.place || it.location || null,
-      lang: it.lang || null,
-      media: mediaIn(it),
-    })),
+    items: items.map((it) => (raw ? it : compact(it))),
   });
 }
 
@@ -140,13 +163,24 @@ export default route(['GET'], async (req, res) => {
   if (!allowed(cfg, q.get('key'))) throw new HttpError(404, 'Not found.');
   if (q.get('step') === 'scrape') return scrape(cfg, q, res);
 
-  const batch = q.get('batch') || '';
-  if (!/^[a-z0-9-]{1,40}$/.test(batch)) throw new HttpError(400, 'Bad batch name.');
+  // One report passed in the address itself (base64url JSON), so a scheduled
+  // run can import without changing the code; or a batch file from data/imports.
   let items;
-  try {
-    items = JSON.parse(await readFile(path.join(process.cwd(), 'data', 'imports', `${batch}.json`), 'utf8'));
-  } catch {
-    throw new HttpError(404, 'Batch not found.');
+  let batch = 'inline';
+  if (q.get('item')) {
+    try {
+      items = [JSON.parse(Buffer.from(q.get('item'), 'base64url').toString('utf8'))];
+    } catch {
+      throw new HttpError(400, 'item must be base64url-encoded JSON.');
+    }
+  } else {
+    batch = q.get('batch') || '';
+    if (!/^[a-z0-9-]{1,40}$/.test(batch)) throw new HttpError(400, 'Bad batch name.');
+    try {
+      items = JSON.parse(await readFile(path.join(process.cwd(), 'data', 'imports', `${batch}.json`), 'utf8'));
+    } catch {
+      throw new HttpError(404, 'Batch not found.');
+    }
   }
   const from = Math.max(0, Number(q.get('from')) || 0);
   const count = Math.min(20, Math.max(1, Number(q.get('count')) || 8));
