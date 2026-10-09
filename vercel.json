@@ -53,5 +53,18 @@
       "includeFiles": "data/imports/**",
       "maxDuration": 300
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/((?!api/).*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "citizenswatch.vercel.app"
+        }
+      ],
+      "destination": "https://citizenswatch.live/$1",
+      "permanent": true
+    }
+  ]
 }
