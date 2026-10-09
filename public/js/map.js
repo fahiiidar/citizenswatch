@@ -22,8 +22,10 @@ export function initMap(container, styleUrl) {
       container,
       style: styleUrl,
       bounds: NIGERIA,
-      fitBoundsOptions: { padding: { top: 140, bottom: Math.round(window.innerHeight * 0.45), left: 20, right: 20 } },
-      maxBounds: [[-2, 1], [19, 17]],
+      // Fit Nigeria into the part of the screen not covered by the panel or sheet.
+      fitBoundsOptions: { padding: sheetPadding() },
+      // A wide box, so the map can always be dragged, even fully zoomed out.
+      maxBounds: [[-15, -8], [32, 26]],
       attributionControl: { compact: true },
       dragRotate: false,
       pitchWithRotate: false,
@@ -180,8 +182,10 @@ function addLayers() {
 }
 
 export function sheetPadding() {
-  if (window.innerWidth >= 900) return { left: 430, top: 80, right: 40, bottom: 40 };
-  return { top: 130, bottom: Math.round(window.innerHeight * 0.45), left: 20, right: 20 };
+  const h = window.innerHeight;
+  // Desktop: keep clear of the side panel on the left and the search and filters on top.
+  if (window.innerWidth >= 900) return { left: 430, top: Math.min(150, Math.round(h * 0.25)), right: 40, bottom: 40 };
+  return { top: Math.min(130, Math.round(h * 0.2)), bottom: Math.round(h * 0.45), left: 20, right: 20 };
 }
 
 export function setReports(reports) {
