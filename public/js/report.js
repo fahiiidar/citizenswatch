@@ -1,7 +1,7 @@
 // The three-step report flow: where, what and when, then photos and posting.
 import { html, icon, tip, mount, toast, shareReport, openModal } from './ui.js';
 import { api, upload, mine } from './api.js';
-import { CATS, CAT_KEYS, TIME_OF_DAY, AGENCIES, catTitle, lagosDate, timeAgo, whenLabel, whereLabel, STATUS } from './format.js';
+import { CATS, CAT_KEYS, AGENCIES, catTitle, lagosDate, timeAgo, whenLabel, whereLabel, STATUS } from './format.js';
 import { state } from './state.js';
 import { processPhoto, processClip, canProcessClips, classifyTaken, takenLabel } from './media.js';
 import { mountCheck, getToken, resetCheck } from './turnstile.js';
@@ -21,7 +21,7 @@ let skipNextMove = false;
 function fresh() {
   return {
     lat: null, lng: null, placeLabel: '', areaLabel: '', placeSub: '', placeEdited: false,
-    category: null, agency: null, when: 'now', date: lagosDate(), timeOfDay: null, caption: '',
+    category: null, agency: null, when: 'now', date: lagosDate(), time: '', caption: '',
     media: [], keepSound: false, sensitive: false,
     checks: { face: false, forces: false, today: false },
     error: null, duplicateOf: null, posting: false, progress: 0,
@@ -40,6 +40,9 @@ function warnIfOld(m) {
     toast(`This ${m.type.startsWith('video/') ? 'clip' : 'photo'} looks like it was taken on ${takenLabel(m.takenAt)}. If it isn't from this event, remove it. Old photos are marked for moderators.`, 7000);
   }
 }
+
+// The time in Nigeria now, as "HH:MM".
+const nowClock = () => new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Africa/Lagos' }).format(new Date());
 
 const fuzz = (v) => Math.round((Math.floor(v / CELL) * CELL + CELL / 2) * 10000) / 10000;
 
@@ -272,9 +275,10 @@ function renderWhat() {
           <span class="sub" style="display:block;margin-top:6px">Up to ${maxDays} days ago.</span>
         </div>
         <div id="tod" style="display:flex;flex-direction:column;gap:8px;margin-top:4px" ${draft.when === 'now' ? 'hidden' : ''}>
-          <span class="sub" style="display:flex;align-items:center;gap:2px">Roughly what time? <span style="color:var(--faint)">(optional)</span>${tip('timeOfDay', 'Why we do not ask for an exact time')}</span>
-          <div class="seg" role="radiogroup" aria-label="Time of day">
-            ${Object.entries(TIME_OF_DAY).map(([k, label]) => html`<button type="button" role="radio" data-tod="${k}" aria-checked="${draft.timeOfDay === k}">${label}</button>`)}
+          <span class="sub" style="display:flex;align-items:center;gap:2px"><label for="time">What time?</label> <span style="color:var(--faint)">(optional)</span>${tip('timeOfDay', 'About the time')}</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="time" class="input" type="time" step="300" value="${draft.time || ''}" style="flex:1">
+            <button type="button" class="act" id="clear-time" ${draft.time ? '' : 'hidden'}>Clear</button>
           </div>
         </div>
       </div>
@@ -305,12 +309,19 @@ function renderWhat() {
     page.querySelectorAll('[data-when]').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
     q('#date-wrap').hidden = draft.when !== 'date';
     q('#tod').hidden = draft.when === 'now';
-    if (draft.when === 'now') draft.timeOfDay = null;
+    if (draft.when === 'now') draft.time = '';
+    q('#err').hidden = true;
   }));
-  page.querySelectorAll('[data-tod]').forEach((b) => b.addEventListener('click', () => {
-    draft.timeOfDay = draft.timeOfDay === b.dataset.tod ? null : b.dataset.tod;
-    page.querySelectorAll('[data-tod]').forEach((x) => x.setAttribute('aria-checked', String(x.dataset.tod === draft.timeOfDay)));
-  }));
+  q('#time').addEventListener('input', (e) => {
+    draft.time = e.target.value;
+    q('#clear-time').hidden = !draft.time;
+    q('#err').hidden = true;
+  });
+  q('#clear-time').addEventListener('click', () => {
+    draft.time = '';
+    q('#time').value = '';
+    q('#clear-time').hidden = true;
+  });
   q('#date').addEventListener('change', (e) => { draft.date = e.target.value; });
   q('#caption').addEventListener('input', (e) => {
     draft.caption = e.target.value;
@@ -322,7 +333,9 @@ function renderWhat() {
       : draft.category === 'officials' && !draft.agency ? 'Choose which agency was involved.'
       : draft.caption.trim().length < 3 ? 'Describe what happened in a few words.'
         : draft.when === 'date' && (!draft.date || draft.date > today || draft.date < minDate) ? `Choose a date in the last ${maxDays} days.`
-          : null;
+          : draft.time && (draft.when === 'today' || (draft.when === 'date' && draft.date === today)) && draft.time > nowClock()
+            ? 'That time has not happened yet today. Check the time, or leave it empty.'
+            : null;
     if (problem) { err.hidden = false; err.textContent = problem; err.scrollIntoView({ block: 'center' }); return; }
     checkSame(q('#next'));
   });
@@ -423,7 +436,7 @@ function renderMedia() {
       </fieldset>` : ''}
       <div style="padding:12px 14px;background:var(--soft-2);border-radius:16px;display:flex;gap:12px;align-items:center">
         <span class="ct sm ${c.tone}">${icon(c.icon, 18)}</span>
-        <span style="display:flex;flex-direction:column;gap:1px;min-width:0"><b style="font-weight:600">${catTitle({ category: draft.category, agency: draft.agency })} · ${whenText}${draft.timeOfDay && draft.when !== 'now' ? `, ${draft.timeOfDay}` : ''}</b>
+        <span style="display:flex;flex-direction:column;gap:1px;min-width:0"><b style="font-weight:600">${catTitle({ category: draft.category, agency: draft.agency })} · ${whenText}${draft.time && draft.when !== 'now' ? `, ${draft.time}` : ''}</b>
         <span class="sub ellipsis">${draft.placeLabel} · no name or account ${tip('anonymous', 'How you stay anonymous')}</span></span>
       </div>
       <div id="turnstile"></div>
@@ -544,7 +557,7 @@ async function post() {
       lng: fuzz(draft.lng),
       when: draft.when,
       date: draft.date,
-      timeOfDay: draft.when === 'now' ? null : draft.timeOfDay,
+      time: draft.when === 'now' ? null : (draft.time || null),
       sensitive: draft.sensitive,
       media: draft.media.map((m) => ({ type: m.type, size: m.blob.size, check: checkOf(m), print: m.print || undefined })),
       turnstileToken: token,

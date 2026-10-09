@@ -86,8 +86,18 @@ export function validateNewReport(body, now = Date.now()) {
     throw new HttpError(400, 'Choose when it happened.');
   }
 
+  // An optional clock time ("19:30", Nigeria time). time_of_day keeps the rough
+  // part of the day too, so reports can still be grouped by morning, evening...
   let timeOfDay = null;
-  if (!isNow && body.timeOfDay) {
+  let clockMs = null;
+  if (!isNow && body.time) {
+    const m = String(body.time).match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+    if (!m) throw new HttpError(400, 'Choose a valid time.');
+    const h = Number(m[1]);
+    clockMs = Date.parse(`${occurredOn}T${m[1]}:${m[2]}:00Z`) - WAT_OFFSET_MS;
+    if (clockMs > now + 5 * 60 * 1000) throw new HttpError(400, 'That time has not happened yet today.');
+    timeOfDay = h >= 5 && h < 12 ? 'morning' : h >= 12 && h < 17 ? 'afternoon' : h >= 17 && h < 21 ? 'evening' : 'night';
+  } else if (!isNow && body.timeOfDay) {
     if (!TIMES_OF_DAY.includes(body.timeOfDay)) throw new HttpError(400, 'Choose a time of day.');
     timeOfDay = body.timeOfDay;
   }
@@ -95,6 +105,8 @@ export function validateNewReport(body, now = Date.now()) {
   let occurredAt;
   if (isNow) {
     occurredAt = new Date(now).toISOString();
+  } else if (clockMs !== null) {
+    occurredAt = new Date(Math.min(clockMs, now)).toISOString();
   } else {
     const hour = timeOfDay ? HOUR_FOR[timeOfDay] : 12;
     let ms = Date.parse(`${occurredOn}T00:00:00Z`) + (hour * 60 * 60 * 1000) - WAT_OFFSET_MS;

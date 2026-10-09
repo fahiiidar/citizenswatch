@@ -86,3 +86,18 @@ test('live only for "now" reports under an hour old', () => {
   assert.equal(isLive({ is_now: true, created_at: new Date(NOW - 61 * 60e3).toISOString() }, NOW), false);
   assert.equal(isLive({ is_now: false, created_at: new Date(NOW).toISOString() }, NOW), false);
 });
+
+test('an exact time is stored in Nigeria time, with its part of the day', () => {
+  const r = validateNewReport({ ...base, when: 'yesterday', time: '19:30' }, NOW);
+  assert.equal(r.occurred_at, '2026-10-08T18:30:00.000Z');
+  assert.equal(r.time_of_day, 'evening');
+  const early = validateNewReport({ ...base, when: 'date', date: '2026-10-05', time: '02:10' }, NOW);
+  assert.equal(early.time_of_day, 'night');
+  assert.equal(early.occurred_at, '2026-10-05T01:10:00.000Z');
+});
+
+test('a time later today than now is refused, and bad times are refused', () => {
+  assert.throws(() => validateNewReport({ ...base, when: 'today', time: '18:00' }, NOW), /not happened yet/);
+  assert.equal(validateNewReport({ ...base, when: 'today', time: '14:50' }, NOW).time_of_day, 'afternoon');
+  assert.throws(() => validateNewReport({ ...base, when: 'today', time: '25:00' }, NOW), /valid time/);
+});

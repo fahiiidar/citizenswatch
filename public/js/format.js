@@ -100,8 +100,8 @@ export const TIPS = {
     text: 'Up to 3 reports an hour from each phone stops one person flooding the map with fake reports.',
   },
   timeOfDay: {
-    title: 'Why not an exact time?',
-    text: 'A rough time is enough to warn people, and it is easier to remember. It also protects you if someone is checking who was where.',
+    title: 'About the time',
+    text: 'Add the time if you know it, in Nigeria time. Leave it empty if you are not sure. If you are worried someone could work out who posted, a time to the nearest half hour is enough.',
   },
   older: {
     title: 'Older reports',
@@ -178,7 +178,7 @@ export function whenLabel(r, now = Date.now()) {
   }
   const day = r.occurred_on === today ? 'Today' : r.occurred_on === yesterday ? 'Yesterday'
     : DAY.format(new Date(`${r.occurred_on}T12:00:00Z`));
-  return r.time_of_day ? `${day}, ${TIME_OF_DAY[r.time_of_day].toLowerCase()}` : day;
+  return r.time_of_day ? `${day} ${CLOCK.format(new Date(r.occurred_at))}` : day;
 }
 
 export function rangeTitle(filters) {
