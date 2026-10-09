@@ -4,6 +4,11 @@
 //
 //   GET /api/import?key=<IMPORT_SECRET>&batch=<name>&from=0&count=8[&dry=1]
 //
+// It can also run an Apify scraper (APIFY_TOKEN in Vercel) and hand back the
+// posts it found, so they can be sorted before anything is imported:
+//
+//   GET /api/import?key=<IMPORT_SECRET>&step=scrape&actor=<user~actor>&input=<json>
+//
 // Safe to run again: a post that was already imported is skipped.
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -73,10 +78,67 @@ async function download(url, type) {
   }
 }
 
+// Every photo and clip address found anywhere inside a scraped post.
+export function mediaIn(item) {
+  const found = new Set();
+  const walk = (v, depth) => {
+    if (depth > 8 || v === null || v === undefined) return;
+    if (typeof v === 'string') {
+      if (/^https:\/\/(pbs\.twimg\.com\/media\/|video\.twimg\.com\/.+\.mp4|scontent[^/]*\.fbcdn\.net\/|video[^/]*\.fbcdn\.net\/)/.test(v)) found.add(v);
+      return;
+    }
+    if (Array.isArray(v)) { v.forEach((x) => walk(x, depth + 1)); return; }
+    if (typeof v === 'object') Object.values(v).forEach((x) => walk(x, depth + 1));
+  };
+  walk(item, 0);
+  return [...found];
+}
+
+async function scrape(cfg, q, res) {
+  const token = process.env.APIFY_TOKEN || '';
+  if (!token) throw new HttpError(400, 'APIFY_TOKEN is not set in Vercel.');
+  const actor = q.get('actor') || '';
+  if (!/^[A-Za-z0-9_.-]+~[A-Za-z0-9_.-]+$/.test(actor)) throw new HttpError(400, 'actor must look like user~actor-name.');
+  let input;
+  try { input = JSON.parse(q.get('input') || '{}'); } catch { throw new HttpError(400, 'input must be JSON.'); }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 280000);
+  let r;
+  try {
+    r = await fetch(`https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?timeout=270&format=json&clean=1`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input),
+      signal: ctrl.signal,
+    });
+  } catch (err) {
+    throw new HttpError(504, `Apify did not answer in time: ${err.message}`);
+  } finally {
+    clearTimeout(timer);
+  }
+  const text = await r.text();
+  if (!r.ok) return send(res, 502, { error: `Apify ${r.status}`, detail: text.slice(0, 1500) });
+  let items = [];
+  try { items = JSON.parse(text); } catch { /* not JSON */ }
+  const raw = q.get('raw') === '1';
+  return send(res, 200, {
+    count: items.length,
+    items: items.map((it) => (raw ? it : {
+      text: it.text || it.full_text || it.fullText || it.message || it.postText || '',
+      date: it.createdAt || it.created_at || it.date || it.time || it.timestamp || null,
+      url: it.url || it.twitterUrl || it.tweetUrl || it.postUrl || it.link || null,
+      place: it.place || it.location || null,
+      lang: it.lang || null,
+      media: mediaIn(it),
+    })),
+  });
+}
+
 export default route(['GET'], async (req, res) => {
   const cfg = requireServerConfig();
   const q = queryOf(req);
   if (!allowed(cfg, q.get('key'))) throw new HttpError(404, 'Not found.');
+  if (q.get('step') === 'scrape') return scrape(cfg, q, res);
 
   const batch = q.get('batch') || '';
   if (!/^[a-z0-9-]{1,40}$/.test(batch)) throw new HttpError(400, 'Bad batch name.');
