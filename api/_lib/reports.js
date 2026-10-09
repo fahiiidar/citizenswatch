@@ -223,6 +223,7 @@ export function fullShape(r, urls = {}, now = Date.now()) {
     old_media: Boolean(r.old_media),
     seen_media: Boolean(r.seen_media),
     seen_of: r.seen_of || null,
+    imported: r.origin === 'imported',
     updates: r.updates || 0,
     ended_at: r.ended_at || null,
     media_items: media.map((m) => ({ type: m.type, url: urls[m.path] || null, check: m.check || 'unknown' })),
@@ -244,5 +245,5 @@ export function updateShape(u, urls = {}) {
 }
 
 export const PUBLIC_COLUMNS =
-  'id,created_at,category,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,mod_override,confirms,falses,old_media,updates,agency,ended_at,seen_media,seen_of';
+  'id,created_at,category,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,mod_override,confirms,falses,old_media,updates,agency,ended_at,seen_media,seen_of,origin';
 export const UPDATE_COLUMNS = 'id,report_id,created_at,caption,media,sensitive,old_media,status,seen_media,seen_of';

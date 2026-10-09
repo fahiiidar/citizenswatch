@@ -119,6 +119,10 @@ export const TIPS = {
     title: 'Photo may be old',
     text: 'The phone that posted this found that the photo or clip was taken at least a day before the event. It could be recycled from an older incident. Moderators review these first.',
   },
+  imported: {
+    title: 'Shared from social media',
+    text: 'Someone posted this publicly on social media. We added it here so the warning reaches more people, without the poster\'s name. Treat it like any unverified report until people nearby confirm it.',
+  },
   seenBefore: {
     title: 'Photo seen before',
     text: 'The same picture was already posted on a different report. It may be recycled from another incident, or the same person posting twice. Moderators check these first.',

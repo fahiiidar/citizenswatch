@@ -13,6 +13,7 @@ export function env() {
     moderatorKeys: parseModerators(e.MODERATOR_KEYS || ''),
     siteName: e.SITE_NAME || 'CitizensWatch',
     mapStyle: e.MAP_STYLE_URL || 'https://tiles.openfreemap.org/styles/positron',
+    importSecret: e.IMPORT_SECRET || '',
     geocoderUrl: (e.GEOCODER_URL || 'https://photon.komoot.io').replace(/\/+$/, ''),
   };
   return cfg;

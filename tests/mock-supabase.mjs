@@ -99,6 +99,7 @@ export function startMock(port = 54321) {
       created_at: new Date().toISOString(), media: [], sensitive: false, status: 'pending', reviewed: false,
       mod_override: null, confirms: 0, falses: 0, flags: 0, hidden_reason: null, time_of_day: null, area_label: null,
       old_media: false, net_fp: null, updates: 0, agency: null, ended_at: null, ended_by: null, seen_media: false, seen_of: null,
+      origin: 'public', source_url: null, source_kind: null,
     }),
     report_updates: () => ({
       created_at: new Date().toISOString(), media: [], sensitive: false, old_media: false, status: 'pending',
@@ -139,6 +140,16 @@ export function startMock(port = 54321) {
       ] });
     }
 
+    // ---- fake social media files (for the import test) ----
+    if (url.pathname === '/fake-media/photo.jpg') {
+      res.writeHead(200, { 'Content-Type': 'image/jpeg' });
+      return res.end(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 0xff, 0xd9]));
+    }
+    if (url.pathname === '/fake-media/page.html') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      return res.end('<html></html>');
+    }
+
     // ---- storage ----
     if (url.pathname.startsWith('/storage/v1/')) {
       const rest = url.pathname.slice('/storage/v1/'.length);
@@ -150,6 +161,10 @@ export function startMock(port = 54321) {
         const path = decodeURIComponent(rest.slice('object/upload/sign/media/'.length));
         files.set(path, { type: req.headers['content-type'], body });
         return json(res, 200, { Key: `media/${path}` });
+      }
+      if (req.method === 'POST' && rest.startsWith('object/media/')) {
+        files.set(decodeURIComponent(rest.slice('object/media/'.length)), { type: req.headers['content-type'], body });
+        return json(res, 200, { Key: rest });
       }
       if (req.method === 'POST' && rest === 'object/sign/media') {
         const { paths } = JSON.parse(body.toString() || '{}');

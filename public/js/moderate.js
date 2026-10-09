@@ -113,9 +113,10 @@ function card(r) {
         ${r.old_media ? html`<span class="flagchip" style="background:var(--amber-soft);color:var(--amber-ink)">Photo may be old</span>` : ''}
         ${r.seen_media ? html`<a class="flagchip" style="background:var(--amber-soft);color:var(--amber-ink);text-decoration:none" href="#/r/${r.seen_of}" target="_blank" rel="noopener">Photo seen before · open earlier</a>` : ''}
         ${r.ended_at ? html`<span class="badge past">Over · ${r.ended_by || ''}</span>` : ''}
+        ${r.imported ? html`<a class="badge past" style="text-decoration:none" href="${r.source_url || '#'}" target="_blank" rel="noopener noreferrer">Imported · original post</a>` : ''}
         ${r.updates ? html`<span class="badge past">${r.updates} update${r.updates === 1 ? '' : 's'}</span>` : ''}
         ${reasons.map(([k, n]) => html`<span class="flagchip">${(FLAG_REASONS[k] || k).split(',')[0]} · ${n}</span>`)}
-        <span class="sub">${r.confirms} confirm · ${r.falses} false · phone ${r.device}</span>
+        <span class="sub">${r.confirms} confirm · ${r.falses} false · ${r.imported ? 'imported' : `phone ${r.device}`}</span>
       </span>
     </div>
     <div class="mod-actions">
@@ -129,7 +130,7 @@ function card(r) {
       ${r.ended_at
         ? html`<button type="button" class="act" data-act="reopen" data-id="${r.id}">Reopen</button>`
         : html`<button type="button" class="act" data-act="end" data-id="${r.id}">Mark as over</button>`}
-      <button type="button" class="act danger" data-act="block" data-id="${r.id}">Block phone</button>
+      ${r.imported ? '' : html`<button type="button" class="act danger" data-act="block" data-id="${r.id}">Block phone</button>`}
       <button type="button" class="act danger" data-act="delete" data-id="${r.id}">${confirmDelete === r.id ? 'Tap again to delete' : 'Delete'}</button>
     </div>
   </article>`;

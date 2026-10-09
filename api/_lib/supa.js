@@ -124,6 +124,12 @@ export async function removeFiles(cfg, paths) {
   });
 }
 
+// Server-side upload (used only by the import tool).
+export async function uploadFile(cfg, path, body, contentType) {
+  const h = headers(cfg, { 'Content-Type': contentType, 'x-upsert': 'true' });
+  await call(`${cfg.supabaseUrl}/storage/v1/object/${BUCKET}/${encodePath(path)}`, { method: 'POST', headers: h, body });
+}
+
 function encodePath(path) {
   return path.split('/').map(encodeURIComponent).join('/');
 }

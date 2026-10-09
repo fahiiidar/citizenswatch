@@ -526,6 +526,7 @@ function cardFor(r) {
       <span class="row-top sub"><span class="badge ${r.status}">${STATUS[r.status]}</span>${r.confirms} confirmation${r.confirms === 1 ? '' : 's'}${r.updates ? ` · ${r.updates} update${r.updates === 1 ? '' : 's'}` : ''} · ${shortAgo(r.occurred_at)}</span>
       ${r.old_media ? html`<span class="sub" style="color:var(--amber-ink);font-weight:600">Photo may be old</span>` : ''}
       ${r.seen_media ? html`<span class="sub" style="color:var(--amber-ink);font-weight:600">Photo seen before</span>` : ''}
+      ${r.imported ? html`<span class="sub">From social media</span>` : ''}
     </span>
     ${thumb}
   </a>`;

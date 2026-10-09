@@ -22,6 +22,8 @@ if (process.argv.includes('--mock')) {
     HASH_SECRET: 'local-testing-secret-123456',
     MODERATOR_KEYS: 'tester:local-moderator-key-123',
     GEOCODER_URL: 'http://localhost:54321/photon',
+    IMPORT_SECRET: 'local-import-secret-0123456789',
+    IMPORT_ALLOW_HTTP: '1',
   });
   console.log('Using the fake database. Moderator key: local-moderator-key-123');
 }
