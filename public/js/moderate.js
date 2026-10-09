@@ -9,6 +9,7 @@ const QUEUES = [
   ['media', 'New with photos'],
   ['disputed', 'Disputed'],
   ['updates', 'Added updates'],
+  ['ended', 'Over'],
   ['hidden', 'Hidden'],
   ['recent', 'All recent'],
 ];
@@ -110,6 +111,7 @@ function card(r) {
         ${r.mod_override ? html`<span class="badge past">Set by moderator</span>` : ''}
         ${r.sensitive ? html`<span class="badge past">Blurred</span>` : ''}
         ${r.old_media ? html`<span class="flagchip" style="background:var(--amber-soft);color:var(--amber-ink)">Photo may be old</span>` : ''}
+        ${r.ended_at ? html`<span class="badge past">Over · ${r.ended_by || ''}</span>` : ''}
         ${r.updates ? html`<span class="badge past">${r.updates} update${r.updates === 1 ? '' : 's'}</span>` : ''}
         ${reasons.map(([k, n]) => html`<span class="flagchip">${(FLAG_REASONS[k] || k).split(',')[0]} · ${n}</span>`)}
         <span class="sub">${r.confirms} confirm · ${r.falses} false · phone ${r.device}</span>
@@ -123,6 +125,9 @@ function card(r) {
       ${r.media_items.length ? html`<button type="button" class="act" data-act="sensitive" data-value="${r.sensitive ? '' : '1'}" data-id="${r.id}">${r.sensitive ? 'Unblur' : 'Blur media'}</button>` : ''}
       <button type="button" class="act" data-act="override" data-value="${r.mod_override === 'corroborated' ? '' : 'corroborated'}" data-id="${r.id}">${r.mod_override === 'corroborated' ? 'Clear corroborated' : 'Mark corroborated'}</button>
       <button type="button" class="act" data-act="override" data-value="${r.mod_override === 'disputed' ? '' : 'disputed'}" data-id="${r.id}">${r.mod_override === 'disputed' ? 'Clear disputed' : 'Mark disputed'}</button>
+      ${r.ended_at
+        ? html`<button type="button" class="act" data-act="reopen" data-id="${r.id}">Reopen</button>`
+        : html`<button type="button" class="act" data-act="end" data-id="${r.id}">Mark as over</button>`}
       <button type="button" class="act danger" data-act="block" data-id="${r.id}">Block phone</button>
       <button type="button" class="act danger" data-act="delete" data-id="${r.id}">${confirmDelete === r.id ? 'Tap again to delete' : 'Delete'}</button>
     </div>
@@ -175,7 +180,7 @@ async function act(btn) {
     await api.modAct(store('cw_mod'), { id, action, value, target });
     toast({
       approve: 'Approved.', hide: 'Hidden from the map.', restore: 'Back on the map.', delete: 'Deleted for good.',
-      block: 'Phone blocked and its reports hidden.', sensitive: 'Updated.', override: 'Status updated.',
+      block: 'Phone blocked and its reports hidden.', end: 'Marked as over. It left the live map.', reopen: 'Back on the live map.', sensitive: 'Updated.', override: 'Status updated.',
     }[action]);
     load();
   } catch (err) {

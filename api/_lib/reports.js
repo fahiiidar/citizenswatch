@@ -171,7 +171,7 @@ export function statusOf(r) {
 }
 
 export function isLive(r, now = Date.now()) {
-  return Boolean(r.is_now) && now - Date.parse(r.created_at) < 60 * 60 * 1000;
+  return Boolean(r.is_now) && !r.ended_at && now - Date.parse(r.created_at) < 60 * 60 * 1000;
 }
 
 // The light version used to draw the map.
@@ -181,6 +181,7 @@ export function mapShape(r, now = Date.now()) {
     id: r.id,
     category: r.category,
     agency: r.agency || null,
+    ended: Boolean(r.ended_at),
     status: statusOf(r),
     live: isLive(r, now),
     lat: r.lat,
@@ -207,6 +208,7 @@ export function fullShape(r, urls = {}, now = Date.now()) {
     falses: r.falses,
     old_media: Boolean(r.old_media),
     updates: r.updates || 0,
+    ended_at: r.ended_at || null,
     media_items: media.map((m) => ({ type: m.type, url: urls[m.path] || null, check: m.check || 'unknown' })),
   };
 }
@@ -224,5 +226,5 @@ export function updateShape(u, urls = {}) {
 }
 
 export const PUBLIC_COLUMNS =
-  'id,created_at,category,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,mod_override,confirms,falses,old_media,updates,agency';
+  'id,created_at,category,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,mod_override,confirms,falses,old_media,updates,agency,ended_at';
 export const UPDATE_COLUMNS = 'id,report_id,created_at,caption,media,sensitive,old_media,status';

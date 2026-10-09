@@ -48,6 +48,11 @@ export function startMock(port = 54321) {
         const list = raw.replace(/^\(|\)$/g, '').split(',').map((s) => s.replace(/^"|"$/g, ''));
         return list.includes(String(v));
       }
+      if (op === 'is') return raw === 'null' ? v === null || v === undefined : String(v) === raw;
+      if (op === 'not') {
+        const [op2, val2] = [raw.slice(0, raw.indexOf('.')), raw.slice(raw.indexOf('.') + 1)];
+        return !matches(row, [[col, op2, val2]]);
+      }
       const val = parseVal(raw);
       if (Array.isArray(v) || (v && typeof v === 'object')) {
         const eq = JSON.stringify(v) === raw;
@@ -93,7 +98,7 @@ export function startMock(port = 54321) {
     reports: () => ({
       created_at: new Date().toISOString(), media: [], sensitive: false, status: 'pending', reviewed: false,
       mod_override: null, confirms: 0, falses: 0, flags: 0, hidden_reason: null, time_of_day: null, area_label: null,
-      old_media: false, net_fp: null, updates: 0, agency: null,
+      old_media: false, net_fp: null, updates: 0, agency: null, ended_at: null, ended_by: null,
     }),
     report_updates: () => ({
       created_at: new Date().toISOString(), media: [], sensitive: false, old_media: false, status: 'pending',

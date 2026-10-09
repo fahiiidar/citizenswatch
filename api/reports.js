@@ -8,7 +8,7 @@ import {
 } from './_lib/reports.js';
 
 const RANGES = { '1h': 1, '24h': 24, '7d': 24 * 7, '30d': 24 * 30 };
-const MAP_COLUMNS = 'id,created_at,category,agency,is_now,occurred_at,place_label,area_label,lat,lng,media,mod_override,confirms,falses';
+const MAP_COLUMNS = 'id,created_at,category,agency,ended_at,is_now,occurred_at,place_label,area_label,lat,lng,media,mod_override,confirms,falses';
 
 export default route(['GET', 'POST'], async (req, res) => {
   const cfg = requireServerConfig();
@@ -63,6 +63,8 @@ async function list(cfg, req, res) {
   let filter = `select=${MAP_COLUMNS}&status=eq.visible&occurred_at=gte.${from}&occurred_at=lte.${to}`;
   const cats = (q.get('cats') || '').split(',').filter((c) => CATEGORIES.includes(c));
   if (cats.length && cats.length < CATEGORIES.length) filter += `&category=in.${inList(cats)}`;
+  // Reports marked as over leave the map unless someone asks to see them.
+  if (q.get('ended') !== '1') filter += '&ended_at=is.null';
   filter += '&order=occurred_at.desc&limit=1500';
 
   const rows = await select(cfg, 'reports', filter);

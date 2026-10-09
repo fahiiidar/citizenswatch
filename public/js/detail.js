@@ -50,6 +50,7 @@ function render() {
     ${head()}
     <div class="page-scroll"><div class="wrap" style="padding-bottom:16px">
       ${media.length ? mediaBlock(media, r.sensitive) : ''}
+      ${r.ended_at ? html`<div class="old-banner" role="note" style="background:var(--soft);color:var(--text-2)">${icon('check', 18)}<span style="flex:1">This incident was marked as over ${timeAgo(r.ended_at)}.</span>${tip('ended', 'What marked as over means', 'inherit')}</div>` : ''}
       ${r.old_media ? html`<div class="old-banner" role="note">${icon('clock', 18)}<span style="flex:1">The photo may be older than this report.</span>${tip('oldPhoto', 'What this warning means', 'inherit')}</div>` : ''}
       <div style="padding:18px 20px 0;display:flex;flex-direction:column;gap:12px">
         <div style="display:flex;gap:12px;align-items:center">
@@ -70,11 +71,13 @@ function render() {
       ${updatesBlock(r)}
     </div></div>
     <div class="page-foot"><div class="wrap" style="display:flex;flex-direction:column;gap:10px">
-      ${posted ? html`<div class="done-note">${icon('check', 20)}You posted this report</div>`
+      ${r.ended_at ? html`<div class="done-note" style="background:var(--soft);color:var(--text-2)">${icon('check', 20)}This incident is over</div>`
+        : posted ? html`<div class="done-note">${icon('check', 20)}You posted this report</div>
+          <button type="button" class="btn ghost" id="end">Mark as over, it has ended</button>`
         : voted.confirm ? html`<div class="done-note">${icon('check', 20)}You confirmed this</div>`
           : html`<button type="button" class="btn blue" id="confirm">${icon('check', 20, 'style="stroke-width:2.4"')}I can confirm this</button>`}
       <div class="btn-row">
-        <button type="button" class="btn ghost" id="false" ${posted || voted.false ? 'disabled' : ''}>${icon('xcircle', 18)}${voted.false ? 'Marked false' : 'False or old'}</button>
+        <button type="button" class="btn ghost" id="false" ${posted || voted.false || r.ended_at ? 'disabled' : ''}>${icon('xcircle', 18)}${voted.false ? 'Marked false' : 'False or old'}</button>
         <button type="button" class="btn ghost" id="flag" ${voted.flag ? 'disabled' : ''}>${icon('flag', 18)}${voted.flag ? 'Flagged' : 'Flag'}</button>
       </div>
       <span class="small-note">Posted anonymously · In danger? Call 112</span>
@@ -125,7 +128,7 @@ function updatesBlock(r) {
         <span><button type="button" class="link-btn" data-flag-update="${u.id}">Flag this update</button></span>
       </div>
     </div>`) : html`<p class="sub" style="margin:0;line-height:1.5">Were you there too? Add your own photos or what you saw. It also counts as a confirmation.</p>`}
-    <a class="btn ghost" href="#/r/${r.id}/add" style="height:46px;font-size:15px">${icon('camera', 18)}Add photos or an update</a>
+    ${r.ended_at ? '' : html`<a class="btn ghost" href="#/r/${r.id}/add" style="height:46px;font-size:15px">${icon('camera', 18)}Add photos or an update</a>`}
   </section>`;
 }
 
@@ -172,6 +175,20 @@ function bind() {
   q('#next')?.addEventListener('click', () => { mediaIndex = (mediaIndex + 1) % r.media_items.length; render(); });
   q('#confirm')?.addEventListener('click', () => vote('confirm'));
   q('#false')?.addEventListener('click', () => vote('false'));
+  q('#end')?.addEventListener('click', async (e) => {
+    if (e.currentTarget.dataset.sure !== '1') {
+      e.currentTarget.dataset.sure = '1';
+      e.currentTarget.textContent = 'Tap again to confirm it has ended';
+      return;
+    }
+    try {
+      await api.endReport(r.id);
+      toast('Marked as over. It leaves the live map. Thank you for updating it.');
+      openDetail(r.id);
+    } catch (err) {
+      toast(err.message);
+    }
+  });
   q('#flag')?.addEventListener('click', () => openFlag((reason) => vote('flag', reason)));
   page.querySelectorAll('[data-reveal-update]').forEach((b) => b.addEventListener('click', () => {
     revealedUpdates.add(b.dataset.revealUpdate);

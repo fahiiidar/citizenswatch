@@ -127,6 +127,10 @@ export const TIPS = {
     title: 'Harassment by officials',
     text: 'Extortion, beatings, illegal arrests or phone searches by police, soldiers, LASTMA, NDLEA or other officials. Describe what happened, not who: no names or badge numbers.',
   },
+  ended: {
+    title: 'Marked as over',
+    text: 'The person who posted it or a moderator says this incident has ended. It stays in the record but leaves the map unless you choose Include ended.',
+  },
   anonymous: {
     title: 'How you stay anonymous',
     text: 'There is no account. We never store your name, phone number, exact location or internet address.',

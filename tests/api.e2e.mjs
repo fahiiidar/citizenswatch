@@ -220,4 +220,27 @@ ok('officials reports can be filtered on the map', r.data.reports.length === 1 &
 r = await call(`/r/${id6}`);
 ok('shared link names the category', String(r.data).includes('Harassment by officials'));
 
+// ---- Marking a report as over ----
+r = await call('/api/end', { method: 'POST', body: { id: id6, device: dev(81) }, ip: '13.0.0.9' });
+ok('only the poster can mark their report as over', r.status === 403);
+r = await call('/api/end', { method: 'POST', body: { id: id6, device: dev(80) }, ip: '13.0.0.1' });
+ok('the poster can mark it as over', r.status === 200);
+r = await call('/api/reports?range=24h');
+ok('an ended report leaves the map by default', !r.data.reports.some((x) => x.id === id6));
+r = await call('/api/reports?range=24h&ended=1');
+const endedRow = r.data.reports.find((x) => x.id === id6);
+ok('it can still be shown on request, marked as ended and not live', endedRow && endedRow.ended === true && endedRow.live === false);
+r = await call('/api/vote', { method: 'POST', body: { id: id6, kind: 'confirm', device: dev(82) }, ip: '13.0.0.10' });
+ok('an ended report takes no more confirmations', r.status === 400);
+r = await call('/api/update', { method: 'POST', body: { action: 'create', reportId: id6, caption: 'Checkpoint is back', device: dev(82) }, ip: '13.0.0.10' });
+ok('an ended report takes no more updates', r.status === 400);
+r = await call('/api/mod?queue=ended', { headers: MOD });
+ok('moderators see it in the Over tab, with who ended it', r.data.reports.some((x) => x.id === id6 && x.ended_by === 'poster'));
+r = await call('/api/mod', { method: 'POST', headers: MOD, body: { id: id6, action: 'reopen' } });
+r = await call('/api/reports?range=24h');
+ok('a moderator can reopen it', r.data.reports.some((x) => x.id === id6));
+r = await call('/api/mod', { method: 'POST', headers: MOD, body: { id: id6, action: 'end' } });
+r = await call(`/api/reports?ids=${id6}`);
+ok('a moderator can mark any report as over', Boolean(r.data.reports[0].ended_at));
+
 console.log(`\n${passed} checks passed`);

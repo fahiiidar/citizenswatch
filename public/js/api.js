@@ -94,6 +94,7 @@ export const api = {
     if (filters.range === 'custom') { p.set('from', filters.from); p.set('to', filters.to); }
     if (filters.cats && filters.cats.length) p.set('cats', filters.cats.join(','));
     if (filters.corroborated) p.set('corroborated', '1');
+    if (filters.ended) p.set('ended', '1');
     return request(`/api/reports?${p}`);
   },
   details: (ids) => request(`/api/reports?ids=${ids.slice(0, 40).join(',')}`),
@@ -108,6 +109,7 @@ export const api = {
   addUpdate: async (payload) => request('/api/update', {
     method: 'POST', body: { ...payload, action: 'create', device: deviceId(), fp: await fingerprint() }, timeout: 30000,
   }),
+  endReport: async (id) => request('/api/end', { method: 'POST', body: { id, device: deviceId(), fp: await fingerprint() } }),
   flagUpdate: (updateId, reason) => request('/api/update', {
     method: 'POST', body: { action: 'flag', updateId, reason, device: deviceId() },
   }),

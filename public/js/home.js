@@ -66,9 +66,14 @@ function renderChips() {
   mount(root.querySelector('#chips'), html`
     <button type="button" class="chip on" id="chip-range" aria-haspopup="dialog">${icon('clock', 16)}${rangeTitle(f)}${icon('down', 14, 'style="stroke-width:2.4"')}</button>
     <button type="button" class="chip ${catCount ? 'on' : ''}" id="chip-cats" aria-haspopup="dialog">${catCount ? `${catCount} categor${catCount === 1 ? 'y' : 'ies'}` : 'All categories'}${icon('down', 14, 'style="stroke-width:2.4"')}</button>
-    <button type="button" class="chip ${f.corroborated ? 'on' : ''}" id="chip-cor" aria-pressed="${f.corroborated}">${f.corroborated ? icon('check', 16) : ''}Corroborated only</button>`);
+    <button type="button" class="chip ${f.corroborated ? 'on' : ''}" id="chip-cor" aria-pressed="${f.corroborated}">${f.corroborated ? icon('check', 16) : ''}Corroborated only</button>
+    <button type="button" class="chip ${f.ended ? 'on' : ''}" id="chip-ended" aria-pressed="${f.ended}">${f.ended ? icon('check', 16) : ''}Include ended</button>`);
   root.querySelector('#chip-range').addEventListener('click', openRangePicker);
   root.querySelector('#chip-cats').addEventListener('click', openCategoryPicker);
+  root.querySelector('#chip-ended').addEventListener('click', () => {
+    state.filters.ended = !state.filters.ended;
+    applyFilters();
+  });
   root.querySelector('#chip-cor').addEventListener('click', () => {
     state.filters.corroborated = !state.filters.corroborated;
     applyFilters();
@@ -426,6 +431,7 @@ function rowFor(r) {
 }
 
 export function statusBadge(r) {
+  if (r.ended) return html`<span class="badge past">Over</span>`;
   if (r.live) return html`<span class="badge live">Live</span>`;
   return html`<span class="badge ${r.status}">${STATUS[r.status]}</span>`;
 }
@@ -515,7 +521,7 @@ function cardFor(r) {
   return html`<a class="card" href="#/r/${r.id}">
     <span class="ct ${c.tone}">${icon(c.icon, 20)}</span>
     <span class="row-main" style="gap:4px">
-      <span class="row-top"><b>${catTitle(r)}</b>${r.live ? html`<span class="badge live">Live</span>` : ''}</span>
+      <span class="row-top"><b>${catTitle(r)}</b>${r.ended_at ? html`<span class="badge past">Over</span>` : r.live ? html`<span class="badge live">Live</span>` : ''}</span>
       <span class="clamp" style="font-size:14px;line-height:1.4;color:var(--ink-2)">${r.caption}</span>
       <span class="row-top sub"><span class="badge ${r.status}">${STATUS[r.status]}</span>${r.confirms} confirmation${r.confirms === 1 ? '' : 's'}${r.updates ? ` · ${r.updates} update${r.updates === 1 ? '' : 's'}` : ''} · ${shortAgo(r.occurred_at)}</span>
       ${r.old_media ? html`<span class="sub" style="color:var(--amber-ink);font-weight:600">Photo may be old</span>` : ''}

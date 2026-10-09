@@ -25,9 +25,10 @@ export default route(['POST'], async (req, res) => {
   await rateLimit(cfg, `d:${dHash}`, 'vote', 3600, 40, 'You have done that a lot this hour. Please wait a little.');
   await rateLimit(cfg, `ip:${ipHash(cfg, req)}`, 'vote', 3600, 150, 'Too many actions from this network. Please wait a little.');
 
-  const rows = await select(cfg, 'reports', `select=id,device_hash,net_fp,status&id=eq.${id}&status=eq.visible`);
+  const rows = await select(cfg, 'reports', `select=id,device_hash,net_fp,status,ended_at&id=eq.${id}&status=eq.visible`);
   const report = rows[0];
   if (!report) throw new HttpError(404, 'That report is no longer available.');
+  if (kind !== 'flag' && report.ended_at) throw new HttpError(400, 'This incident has been marked as over.');
   if (kind !== 'flag' && isOwner(report, dHash, nf)) {
     throw new HttpError(400, 'You posted this report, so you cannot confirm or dispute it.');
   }

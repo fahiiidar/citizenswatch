@@ -134,7 +134,7 @@ function addLayers() {
     filter: ['!', ['has', 'point_count']],
     paint: {
       'circle-color': ['match', ['get', 'tone'],
-        'red', TONE_COLOR.red, 'amber', TONE_COLOR.amber, 'green', TONE_COLOR.green, TONE_COLOR.grey],
+        'red', TONE_COLOR.red, 'amber', TONE_COLOR.amber, 'green', TONE_COLOR.green, 'ended', '#98A2B3', TONE_COLOR.grey],
       'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 7, 12, 10, 16, 13],
       'circle-stroke-width': 2.5,
       'circle-stroke-color': '#FFFFFF',
@@ -195,8 +195,8 @@ export function setReports(reports) {
       properties: {
         id: r.id,
         live: r.live,
-        tone: (CATS[r.category] || CATS.other).tone,
-        fade: ageH < 24 ? 1 : ageH < 24 * 7 ? 0.7 : 0.45,
+        tone: r.ended ? 'ended' : (CATS[r.category] || CATS.other).tone,
+        fade: r.ended ? 0.55 : ageH < 24 ? 1 : ageH < 24 * 7 ? 0.7 : 0.45,
       },
     };
   });

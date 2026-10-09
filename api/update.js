@@ -24,8 +24,9 @@ async function create(cfg, req, res, body) {
   const dHash = deviceHash(cfg, body.device);
   const nf = netFp(cfg, req, body.fp);
 
-  const reports = await select(cfg, 'reports', `select=id&id=eq.${reportId}&status=eq.visible`);
+  const reports = await select(cfg, 'reports', `select=id,ended_at&id=eq.${reportId}&status=eq.visible`);
   if (!reports.length) throw new HttpError(404, 'That report is no longer available.');
+  if (reports[0].ended_at) throw new HttpError(400, 'This incident has been marked as over, so it cannot take new updates.');
 
   await assertNotBlocked(cfg, dHash);
   await verifyHuman(cfg, body.turnstileToken, req);

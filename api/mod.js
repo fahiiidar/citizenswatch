@@ -6,7 +6,7 @@ import { fullShape, updateShape, statusOf, watToday } from './_lib/reports.js';
 import { recountUpdates } from './_lib/updates.js';
 
 const COLUMNS =
-  'id,created_at,category,agency,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,hidden_reason,reviewed,mod_override,confirms,falses,flags,device_hash,old_media,updates';
+  'id,created_at,category,agency,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,hidden_reason,reviewed,mod_override,confirms,falses,flags,device_hash,old_media,updates,ended_at,ended_by';
 const UPDATE_COLS = 'id,report_id,created_at,caption,media,sensitive,old_media,status,hidden_reason,reviewed,flags,device_hash';
 
 const QUEUES = {
@@ -14,7 +14,8 @@ const QUEUES = {
   media: 'status=eq.visible&reviewed=eq.false&media=neq.%5B%5D&order=old_media.desc,created_at.desc',
   disputed: 'status=eq.visible&falses=gte.3&order=falses.desc',
   hidden: 'status=eq.hidden&order=created_at.desc',
-  recent: 'status=eq.visible&order=created_at.desc',
+  recent: 'status=eq.visible&ended_at=is.null&order=created_at.desc',
+  ended: 'status=eq.visible&ended_at=not.is.null&order=ended_at.desc',
 };
 
 export default route(['GET', 'POST'], async (req, res) => {
@@ -40,6 +41,7 @@ async function getQueue(cfg, req, res, moderator) {
     hidden: r.status === 'hidden',
     hidden_reason: r.hidden_reason,
     mod_override: r.mod_override,
+    ended_by: r.ended_by,
     device: r.device_hash.slice(0, 10),
   }));
 
@@ -142,6 +144,12 @@ async function act(cfg, req, res, moderator) {
     case 'sensitive':
       await update(cfg, 'reports', where, { sensitive: Boolean(body.value) });
       detail = String(Boolean(body.value));
+      break;
+    case 'end':
+      await update(cfg, 'reports', where, { ended_at: new Date().toISOString(), ended_by: `moderator: ${moderator}` });
+      break;
+    case 'reopen':
+      await update(cfg, 'reports', where, { ended_at: null, ended_by: null });
       break;
     case 'block':
       await insert(cfg, 'blocked_devices', [{ device_hash: report.device_hash, note: `by ${moderator}` }], {

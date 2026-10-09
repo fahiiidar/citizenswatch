@@ -11,6 +11,7 @@ export const state = {
     to: saved.to || null,
     cats: Array.isArray(saved.cats) ? saved.cats.filter((c) => CAT_KEYS.includes(c)) : [],
     corroborated: Boolean(saved.corroborated),
+    ended: false,
   },
   reports: [],
   byId: new Map(),
