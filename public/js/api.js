@@ -82,6 +82,7 @@ async function request(path, { method = 'GET', body, headers = {}, timeout = 200
   if (!res.ok) {
     const err = new Error(data.error || 'Something went wrong. Please try again.');
     err.status = res.status;
+    err.data = data;
     throw err;
   }
   return data;
@@ -99,6 +100,7 @@ export const api = {
   },
   details: (ids) => request(`/api/reports?ids=${ids.slice(0, 40).join(',')}`),
   detail: (id) => request(`/api/reports?ids=${id}&updates=1`),
+  nearby: (lat, lng, cat) => request(`/api/reports?near=${lat.toFixed(4)},${lng.toFixed(4)}&cat=${cat}`, { timeout: 8000 }),
   create: async (payload) => request('/api/reports', {
     method: 'POST', body: { ...payload, device: deviceId(), fp: await fingerprint() }, timeout: 30000,
   }),

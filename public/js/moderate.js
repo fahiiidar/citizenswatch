@@ -69,7 +69,7 @@ function render() {
   mount(page, shell(html`<div class="mod-wrap">
     <div>
       <h1 class="big">Review queue</h1>
-      <p class="lead">Work through flagged reports first. Hidden reports can be restored.</p>
+      <p class="lead">Work through flagged reports first. Under New with photos, reused and old photos come first. Hidden reports can be restored.</p>
     </div>
     <div class="mod-stats">
       <div class="mod-stat"><span class="sub">Flags waiting</span><b style="color:var(--red-icon)">${c.flagged}</b></div>
@@ -111,6 +111,7 @@ function card(r) {
         ${r.mod_override ? html`<span class="badge past">Set by moderator</span>` : ''}
         ${r.sensitive ? html`<span class="badge past">Blurred</span>` : ''}
         ${r.old_media ? html`<span class="flagchip" style="background:var(--amber-soft);color:var(--amber-ink)">Photo may be old</span>` : ''}
+        ${r.seen_media ? html`<a class="flagchip" style="background:var(--amber-soft);color:var(--amber-ink);text-decoration:none" href="#/r/${r.seen_of}" target="_blank" rel="noopener">Photo seen before · open earlier</a>` : ''}
         ${r.ended_at ? html`<span class="badge past">Over · ${r.ended_by || ''}</span>` : ''}
         ${r.updates ? html`<span class="badge past">${r.updates} update${r.updates === 1 ? '' : 's'}</span>` : ''}
         ${reasons.map(([k, n]) => html`<span class="flagchip">${(FLAG_REASONS[k] || k).split(',')[0]} · ${n}</span>`)}
@@ -148,6 +149,7 @@ function updateCard(u) {
         ${u.hidden ? html`<span class="badge past">Hidden${u.hidden_reason ? `: ${u.hidden_reason}` : ''}</span>` : ''}
         ${u.sensitive ? html`<span class="badge past">Blurred</span>` : ''}
         ${u.old_media ? html`<span class="flagchip" style="background:var(--amber-soft);color:var(--amber-ink)">Photo may be old</span>` : ''}
+        ${u.seen_media ? html`<a class="flagchip" style="background:var(--amber-soft);color:var(--amber-ink);text-decoration:none" href="#/r/${u.seen_of}" target="_blank" rel="noopener">Photo seen before · open earlier</a>` : ''}
         ${reasons.map(([k, n]) => html`<span class="flagchip">${(FLAG_REASONS[k] || k).split(',')[0]} · ${n}</span>`)}
         <span class="sub">phone ${u.device}</span>
       </span>

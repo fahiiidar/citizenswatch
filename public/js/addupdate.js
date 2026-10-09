@@ -8,12 +8,22 @@ import { mountCheck, getToken, resetCheck } from './turnstile.js';
 
 const page = document.getElementById('page');
 let d = null;
+let carry = null;
+
+// Someone started a new report, then chose to add to an existing one instead:
+// their words (and any photos already prepared) come with them.
+export function prefillUpdate(reportId, caption = '', media = []) {
+  carry = { reportId, caption, media };
+  if (d && d.report.id === reportId) d = null;
+}
 
 function fresh(report) {
+  const c = carry && carry.reportId === report.id ? carry : null;
+  carry = null;
   return {
     report,
-    caption: '',
-    media: [],
+    caption: c ? c.caption : '',
+    media: c ? c.media : [],
     keepSound: false,
     sensitive: false,
     checks: { face: false, forces: false, here: false },
@@ -202,7 +212,7 @@ async function post() {
       reportId: d.report.id,
       caption: d.caption.trim(),
       sensitive: d.sensitive,
-      media: d.media.map((m) => ({ type: m.type, size: m.blob.size, check: checkOf(m) })),
+      media: d.media.map((m) => ({ type: m.type, size: m.blob.size, check: checkOf(m), print: m.print || undefined })),
       turnstileToken: token,
     });
     const total = d.media.reduce((s, m) => s + m.blob.size, 0) || 1;

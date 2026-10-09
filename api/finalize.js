@@ -2,6 +2,7 @@ import { route, send, readJson, HttpError } from './_lib/http.js';
 import { requireServerConfig } from './_lib/env.js';
 import { select, update, listFolder } from './_lib/supa.js';
 import { afterUpdatePublished } from './_lib/updates.js';
+import { savePrints } from './_lib/dupes.js';
 
 // Called by the phone after its photos or clip have finished uploading,
 // for a new report or for an update added to one.
@@ -31,5 +32,6 @@ export default route(['POST'], async (req, res) => {
 
   await update(cfg, table, `id=eq.${id}`, { status: 'visible', finalize_token: null });
   if (isUpdate) await afterUpdatePublished(cfg, row);
+  await savePrints(cfg, { reportId: isUpdate ? row.report_id : row.id, updateId: isUpdate ? row.id : null, media: row.media });
   return send(res, 200, { id, status: 'visible' });
 });

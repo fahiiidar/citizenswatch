@@ -403,3 +403,7 @@ h1.big { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.6px; l
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* "Is this the same incident?" */
+.same-card { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--white); }
+.same-cap { line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }

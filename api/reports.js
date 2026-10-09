@@ -3,6 +3,7 @@ import { route, send, readJson, queryOf, HttpError } from './_lib/http.js';
 import { requireServerConfig } from './_lib/env.js';
 import { select, insert, signUpload, signDownloads, inList } from './_lib/supa.js';
 import { deviceHash, ipHash, netFp, verifyHuman, rateLimit, assertNotBlocked } from './_lib/security.js';
+import { samePhoneRecent, nearbyOpen, seenBefore, printsOf, NEAR } from './_lib/dupes.js';
 import {
   CATEGORIES, PUBLIC_COLUMNS, UPDATE_COLUMNS, validateNewReport, mapShape, fullShape, updateShape, extFor,
 } from './_lib/reports.js';
@@ -19,6 +20,19 @@ export default route(['GET', 'POST'], async (req, res) => {
 async function list(cfg, req, res) {
   const q = queryOf(req);
   const now = Date.now();
+
+  // "Is this the same incident?": open reports of the same kind close by.
+  if (q.get('near')) {
+    const [lat, lng] = q.get('near').split(',').map(Number);
+    const category = q.get('cat');
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !CATEGORIES.includes(category)) {
+      throw new HttpError(400, 'Choose a place and what happened.');
+    }
+    const rows = await nearbyOpen(cfg, { category, lat, lng }, now);
+    return send(res, 200, { reports: rows.map((r) => fullShape(r, {}, now)), radius: NEAR }, {
+      'Cache-Control': 'public, max-age=0, s-maxage=10',
+    });
+  }
 
   // Detail mode: full reports (with photo and clip links) for a handful of ids.
   if (q.get('ids')) {
@@ -87,8 +101,17 @@ async function create(cfg, req, res) {
   const body = await readJson(req);
   const report = validateNewReport(body);
   const dHash = deviceHash(cfg, body.device);
+  const nf = netFp(cfg, req, body.fp);
 
   await assertNotBlocked(cfg, dHash);
+  // The same phone already reported this kind of thing here in the last few hours.
+  const repeat = await samePhoneRecent(cfg, { dHash, nf, category: report.category, lat: report.lat, lng: report.lng });
+  if (repeat) {
+    throw new HttpError(409,
+      'You already reported this here in the last few hours. Add your new photos or details to that report instead.',
+      { duplicateOf: repeat });
+  }
+
   await verifyHuman(cfg, body.turnstileToken, req);
   await rateLimit(cfg, `d:${dHash}`, 'post', 3600, 3,
     'You can post up to 3 reports an hour from one phone. Please wait a little.');
@@ -96,7 +119,10 @@ async function create(cfg, req, res) {
     'Too many reports from this network in the last hour. Please wait a little.');
 
   const id = randomUUID();
-  const media = report.mediaSpec.map((m, i) => ({ path: `${id}/${i}.${extFor(m.type)}`, type: m.type, check: m.check }));
+  const media = report.mediaSpec.map((m, i) => ({
+    path: `${id}/${i}.${extFor(m.type)}`, type: m.type, check: m.check, ...(m.print ? { print: m.print } : {}),
+  }));
+  const seen = await seenBefore(cfg, printsOf(media));
   const finalizeToken = media.length ? randomBytes(24).toString('hex') : null;
 
   await insert(cfg, 'reports', [{
@@ -114,9 +140,10 @@ async function create(cfg, req, res) {
     occurred_at: report.occurred_at,
     sensitive: report.sensitive,
     old_media: report.old_media,
+    ...(seen.seen_media ? seen : {}),
     media,
     device_hash: dHash,
-    net_fp: netFp(cfg, req, body.fp),
+    net_fp: nf,
     finalize_token: finalizeToken,
     // Reports with files stay hidden until every file has arrived.
     status: media.length ? 'pending' : 'visible',

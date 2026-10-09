@@ -146,6 +146,7 @@ export function openModal({ title, body, onMount, label }) {
     scrim.remove();
     modal.remove();
     document.removeEventListener('keydown', onKey);
+    window.removeEventListener('hashchange', close);
     if (previous && previous.focus) previous.focus({ preventScroll: true });
   };
   const onKey = (e) => {
@@ -160,6 +161,8 @@ export function openModal({ title, body, onMount, label }) {
     }
   };
   document.addEventListener('keydown', onKey);
+  // Going to another screen (including the phone's back button) closes it.
+  window.addEventListener('hashchange', close);
   scrim.addEventListener('click', close);
   modal.querySelector('[data-close]').addEventListener('click', close);
   if (onMount) onMount(modal, close);

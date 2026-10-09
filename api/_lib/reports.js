@@ -141,7 +141,9 @@ export function validateMedia(input) {
       throw new HttpError(400, type.startsWith('video/') ? 'That clip is too large.' : 'That photo is too large.');
     }
     const check = MEDIA_CHECKS.includes(m?.check) ? m.check : 'unknown';
-    return { type, size, check };
+    // A small visual fingerprint made on the phone, used to spot reused photos.
+    const print = /^[0-9a-f]{16}$/.test(m?.print || '') ? m.print : null;
+    return { type, size, check, print };
   });
 }
 
@@ -207,6 +209,8 @@ export function fullShape(r, urls = {}, now = Date.now()) {
     sensitive: r.sensitive,
     falses: r.falses,
     old_media: Boolean(r.old_media),
+    seen_media: Boolean(r.seen_media),
+    seen_of: r.seen_of || null,
     updates: r.updates || 0,
     ended_at: r.ended_at || null,
     media_items: media.map((m) => ({ type: m.type, url: urls[m.path] || null, check: m.check || 'unknown' })),
@@ -221,10 +225,12 @@ export function updateShape(u, urls = {}) {
     caption: u.caption,
     sensitive: u.sensitive,
     old_media: Boolean(u.old_media),
+    seen_media: Boolean(u.seen_media),
+    seen_of: u.seen_of || null,
     media_items: media.map((m) => ({ type: m.type, url: urls[m.path] || null, check: m.check || 'unknown' })),
   };
 }
 
 export const PUBLIC_COLUMNS =
-  'id,created_at,category,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,mod_override,confirms,falses,old_media,updates,agency,ended_at';
-export const UPDATE_COLUMNS = 'id,report_id,created_at,caption,media,sensitive,old_media,status';
+  'id,created_at,category,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,mod_override,confirms,falses,old_media,updates,agency,ended_at,seen_media,seen_of';
+export const UPDATE_COLUMNS = 'id,report_id,created_at,caption,media,sensitive,old_media,status,seen_media,seen_of';

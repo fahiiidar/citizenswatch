@@ -119,6 +119,10 @@ export const TIPS = {
     title: 'Photo may be old',
     text: 'The phone that posted this found that the photo or clip was taken at least a day before the event. It could be recycled from an older incident. Moderators review these first.',
   },
+  seenBefore: {
+    title: 'Photo seen before',
+    text: 'The same picture was already posted on a different report. It may be recycled from another incident, or the same person posting twice. Moderators check these first.',
+  },
   updates: {
     title: 'Updates from others',
     text: 'People nearby can add their own photos or words to a report. Each update also counts as a confirmation. Updates are checked the same way as reports.',

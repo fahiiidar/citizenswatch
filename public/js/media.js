@@ -115,6 +115,41 @@ export function takenLabel(takenAt) {
   return takenAt ? DAY_FMT.format(new Date(takenAt)) : '';
 }
 
+// ---- Photo fingerprint ------------------------------------------------------
+// A 64-bit "difference hash": the picture shrunk to 9x8 grey squares, noting
+// whether each square is brighter than the next. Resized or re-saved copies of
+// the same photo give (almost) the same code. It cannot be turned back into
+// the picture, and it says nothing about who took it.
+
+export function printFromPixels(rgba) {
+  const grey = [];
+  for (let i = 0; i < 72; i += 1) {
+    grey.push(0.299 * rgba[i * 4] + 0.587 * rgba[i * 4 + 1] + 0.114 * rgba[i * 4 + 2]);
+  }
+  let hex = '';
+  for (let row = 0; row < 8; row += 1) {
+    let byte = 0;
+    for (let col = 0; col < 8; col += 1) {
+      byte = (byte << 1) | (grey[row * 9 + col] > grey[row * 9 + col + 1] ? 1 : 0);
+    }
+    hex += byte.toString(16).padStart(2, '0');
+  }
+  return hex;
+}
+
+export function printOf(source) {
+  try {
+    const c = document.createElement('canvas');
+    c.width = 9;
+    c.height = 8;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(source, 0, 0, 9, 8);
+    return printFromPixels(ctx.getImageData(0, 0, 9, 8).data);
+  } catch {
+    return null;
+  }
+}
+
 export async function processPhoto(file) {
   if (!file.type.startsWith('image/')) throw new Error('That file is not a photo.');
   const takenAt = await readTakenDate(file);
@@ -132,7 +167,7 @@ export async function processPhoto(file) {
       ctx.drawImage(img, 0, 0, w, h);
       const blob = await toBlob(canvas, 'image/jpeg', attempt ? 0.72 : 0.82);
       if (blob && blob.size <= MAX_PHOTO_BYTES) {
-        return { blob, type: 'image/jpeg', preview: URL.createObjectURL(blob), takenAt };
+        return { blob, type: 'image/jpeg', preview: URL.createObjectURL(blob), takenAt, print: printOf(canvas) };
       }
       side = Math.round(side * 0.75);
     }
@@ -219,9 +254,12 @@ export async function processClip(file, { keepSound = false, onProgress } = {}) 
     const stopped = new Promise((resolve) => { recorder.onstop = resolve; });
 
     let running = true;
+    let print = null;
+    const printAt = Math.min(1, duration / 2);
     const draw = () => {
       if (!running) return;
       ctx.drawImage(video, 0, 0, w, h);
+      if (!print && video.currentTime >= printAt) print = printOf(canvas);
       onProgress?.(Math.min(1, video.currentTime / duration));
       if (video.currentTime >= duration || video.ended) {
         running = false;
@@ -263,6 +301,7 @@ export async function processClip(file, { keepSound = false, onProgress } = {}) 
       trimmed: Number.isFinite(video.duration) && video.duration > MAX_CLIP_SECONDS + 0.5,
       soundKept,
       takenAt,
+      print: print || printOf(canvas),
     };
   } finally {
     URL.revokeObjectURL(src);

@@ -71,9 +71,11 @@ r = await call('/api/vote', { method: 'POST', body: { id: id1, kind: 'flag', dev
 ok('flag needs a reason', r.status === 400);
 
 // Rate limit: 3 posts an hour per phone
-await call('/api/reports', { method: 'POST', body: { ...report, device: dev(1) }, ip: '1.1.1.1' });
-await call('/api/reports', { method: 'POST', body: { ...report, device: dev(1) }, ip: '1.1.1.1' });
 r = await call('/api/reports', { method: 'POST', body: { ...report, device: dev(1) }, ip: '1.1.1.1' });
+ok('same phone, same kind, same area within hours is sent to its earlier report', r.status === 409 && r.data.duplicateOf === id1);
+await call('/api/reports', { method: 'POST', body: { ...report, category: 'road', device: dev(1) }, ip: '1.1.1.1' });
+await call('/api/reports', { method: 'POST', body: { ...report, category: 'robbery', device: dev(1) }, ip: '1.1.1.1' });
+r = await call('/api/reports', { method: 'POST', body: { ...report, category: 'kidnapping', device: dev(1) }, ip: '1.1.1.1' });
 ok('4th post in an hour from one phone is refused', r.status === 429 && /3 reports an hour/.test(r.data.error));
 
 // Auto-hide after 5 flags
@@ -242,5 +244,68 @@ ok('a moderator can reopen it', r.data.reports.some((x) => x.id === id6));
 r = await call('/api/mod', { method: 'POST', headers: MOD, body: { id: id6, action: 'end' } });
 r = await call(`/api/reports?ids=${id6}`);
 ok('a moderator can mark any report as over', Boolean(r.data.reports[0].ended_at));
+
+
+// ---- Duplicate guards ----
+{
+  const near = await call(`/api/reports?near=10.6653,6.5452&cat=gunmen`);
+  ok('nearby check finds the open report of the same kind', near.status === 200 && near.data.reports.some((x) => x.id === id1));
+  const far = await call(`/api/reports?near=9.0765,7.3986&cat=gunmen`);
+  ok('nearby check ignores reports far away', far.status === 200 && !far.data.reports.some((x) => x.id === id1));
+  const other = await call(`/api/reports?near=10.6653,6.5452&cat=clear`);
+  ok('nearby check ignores other kinds', !other.data.reports.some((x) => x.id === id1));
+  ok('nearby check refuses a bad category', (await call('/api/reports?near=10.6,6.5&cat=nope')).status === 400);
+
+  const otherPlace = await call('/api/reports', { method: 'POST', body: { ...report, lat: 9.0765, lng: 7.3986, placeLabel: 'Wuse', device: dev(1) }, ip: '1.1.1.9' });
+  ok('same phone can still report the same kind somewhere else (until its hourly limit)', otherPlace.status !== 409);
+
+  const PRINT = 'f0e1d2c3b4a59687';
+  const CLOSE = 'f0e1d2c3b4a59686'; // one bit different: the same photo re-saved
+  const post = async (n, print, ip) => {
+    const res = await call('/api/reports', { method: 'POST', ip, body: {
+      ...report, category: 'attack', lat: 11.99 + n * 0.1, lng: 8.52, placeLabel: `Place ${n}`, device: dev(600 + n),
+      media: [{ type: 'image/jpeg', size: 1000, check: 'ok', print }],
+    } });
+    return res;
+  };
+  const a = await post(1, PRINT, '6.6.6.1');
+  ok('report with a photo print is accepted', a.status === 201);
+  // Upload the file and finalize, so the print is remembered.
+  await fetch(new URL(a.data.uploads[0].url, B), { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: Buffer.from('jpegdata') });
+  const fin = await call('/api/finalize', { method: 'POST', body: { id: a.data.id, token: a.data.finalizeToken } });
+  ok('finalize works with prints', fin.status === 200);
+
+  const b = await post(2, CLOSE, '6.6.6.2');
+  await fetch(new URL(b.data.uploads[0].url, B), { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: Buffer.from('jpegdata') });
+  await call('/api/finalize', { method: 'POST', body: { id: b.data.id, token: b.data.finalizeToken } });
+  let det = await call(`/api/reports?ids=${b.data.id}`);
+  ok('a re-saved copy of an earlier photo is marked "seen before" with a link', det.data.reports[0].seen_media === true && det.data.reports[0].seen_of === a.data.id);
+  ok('the internal print is never shown publicly', !JSON.stringify(det.data).includes(CLOSE));
+
+  const c = await post(3, '0123456789abcdef', '6.6.6.3');
+  await fetch(new URL(c.data.uploads[0].url, B), { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: Buffer.from('jpegdata') });
+  await call('/api/finalize', { method: 'POST', body: { id: c.data.id, token: c.data.finalizeToken } });
+  det = await call(`/api/reports?ids=${c.data.id}`);
+  ok('a different photo is not marked', det.data.reports[0].seen_media === false);
+
+  // An update reusing the report's own photo is fine; one reusing another report's photo is marked.
+  const u1 = await call('/api/update', { method: 'POST', ip: '6.6.7.1', body: {
+    action: 'create', reportId: a.data.id, caption: 'Same scene, still going on', device: dev(700),
+    media: [{ type: 'image/jpeg', size: 1000, check: 'ok', print: PRINT }] } });
+  const u2 = await call('/api/update', { method: 'POST', ip: '6.6.7.2', body: {
+    action: 'create', reportId: c.data.id, caption: 'Another photo of this', device: dev(701),
+    media: [{ type: 'image/jpeg', size: 1000, check: 'ok', print: PRINT }] } });
+  for (const u of [u1, u2]) {
+    await fetch(new URL(u.data.uploads[0].url, B), { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: Buffer.from('jpegdata') });
+    await call('/api/finalize', { method: 'POST', body: { id: u.data.id, token: u.data.finalizeToken, kind: 'update' } });
+  }
+  const da = await call(`/api/reports?ids=${a.data.id}&updates=1`);
+  const dc = await call(`/api/reports?ids=${c.data.id}&updates=1`);
+  ok('an update reusing its own report\'s photo is not marked', da.data.reports[0].update_items.find((x) => x.id === u1.data.id)?.seen_media === false);
+  ok('an update reusing another report\'s photo is marked', dc.data.reports[0].update_items.find((x) => x.id === u2.data.id)?.seen_media === true);
+
+  const mq = await call('/api/mod?queue=media', { headers: MOD });
+  ok('moderators see photos seen before first', mq.data.reports[0]?.seen_media === true);
+}
 
 console.log(`\n${passed} checks passed`);

@@ -52,6 +52,7 @@ function render() {
       ${media.length ? mediaBlock(media, r.sensitive) : ''}
       ${r.ended_at ? html`<div class="old-banner" role="note" style="background:var(--soft);color:var(--text-2)">${icon('check', 18)}<span style="flex:1">This incident was marked as over ${timeAgo(r.ended_at)}.</span>${tip('ended', 'What marked as over means', 'inherit')}</div>` : ''}
       ${r.old_media ? html`<div class="old-banner" role="note">${icon('clock', 18)}<span style="flex:1">The photo may be older than this report.</span>${tip('oldPhoto', 'What this warning means', 'inherit')}</div>` : ''}
+      ${r.seen_media ? html`<div class="old-banner" role="note">${icon('eye', 18)}<span style="flex:1">This photo was already posted on another report.${r.seen_of ? html` <a href="#/r/${r.seen_of}" style="color:inherit;font-weight:600">See the earlier one</a>` : ''}</span>${tip('seenBefore', 'What this warning means', 'inherit')}</div>` : ''}
       <div style="padding:18px 20px 0;display:flex;flex-direction:column;gap:12px">
         <div style="display:flex;gap:12px;align-items:center">
           <span class="ct lg ${c.tone}">${icon(c.icon, 22)}</span>
@@ -116,7 +117,7 @@ function updatesBlock(r) {
     ${items.length ? items.map((u, i) => html`<div class="update">
       <span class="update-rail" aria-hidden="true"><i></i>${i < items.length - 1 ? html`<b></b>` : ''}</span>
       <div class="update-body">
-        <span class="sub">${timeAgo(u.created_at)}${u.old_media ? html` · <span style="color:var(--amber-ink);font-weight:600">photo may be old</span>` : ''}</span>
+        <span class="sub">${timeAgo(u.created_at)}${u.old_media ? html` · <span style="color:var(--amber-ink);font-weight:600">photo may be old</span>` : ''}${u.seen_media ? html` · <span style="color:var(--amber-ink);font-weight:600">photo seen before</span>` : ''}</span>
         ${u.caption ? html`<p style="margin:0;font-size:15px;line-height:1.5;white-space:pre-wrap">${u.caption}</p>` : ''}
         ${u.media_items.some((m) => m.url) ? html`<div class="update-media">${u.media_items.filter((m) => m.url).map((m) => {
           const blurred = u.sensitive && !revealedUpdates.has(u.id);

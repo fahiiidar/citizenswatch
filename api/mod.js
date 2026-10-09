@@ -6,12 +6,12 @@ import { fullShape, updateShape, statusOf, watToday } from './_lib/reports.js';
 import { recountUpdates } from './_lib/updates.js';
 
 const COLUMNS =
-  'id,created_at,category,agency,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,hidden_reason,reviewed,mod_override,confirms,falses,flags,device_hash,old_media,updates,ended_at,ended_by';
-const UPDATE_COLS = 'id,report_id,created_at,caption,media,sensitive,old_media,status,hidden_reason,reviewed,flags,device_hash';
+  'id,created_at,category,agency,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,hidden_reason,reviewed,mod_override,confirms,falses,flags,device_hash,old_media,updates,ended_at,ended_by,seen_media,seen_of';
+const UPDATE_COLS = 'id,report_id,created_at,caption,media,sensitive,old_media,seen_media,seen_of,status,hidden_reason,reviewed,flags,device_hash';
 
 const QUEUES = {
   flagged: 'status=eq.visible&flags=gt.0&reviewed=eq.false&order=flags.desc,created_at.desc',
-  media: 'status=eq.visible&reviewed=eq.false&media=neq.%5B%5D&order=old_media.desc,created_at.desc',
+  media: 'status=eq.visible&reviewed=eq.false&media=neq.%5B%5D&order=seen_media.desc,old_media.desc,created_at.desc',
   disputed: 'status=eq.visible&falses=gte.3&order=falses.desc',
   hidden: 'status=eq.hidden&order=created_at.desc',
   recent: 'status=eq.visible&ended_at=is.null&order=created_at.desc',
@@ -63,7 +63,7 @@ async function getQueue(cfg, req, res, moderator) {
 // Updates people added to reports that a moderator has not looked at yet.
 async function getUpdates(cfg, res, moderator) {
   const rows = await select(cfg, 'report_updates',
-    `select=${UPDATE_COLS}&reviewed=eq.false&status=neq.pending&order=flags.desc,created_at.desc&limit=60`);
+    `select=${UPDATE_COLS}&reviewed=eq.false&status=neq.pending&order=flags.desc,seen_media.desc,created_at.desc&limit=60`);
   const parentIds = [...new Set(rows.map((u) => u.report_id))];
   const parents = parentIds.length
     ? await select(cfg, 'reports', `select=id,category,place_label,area_label&id=in.(${parentIds.map((i) => `"${i}"`).join(',')})`)

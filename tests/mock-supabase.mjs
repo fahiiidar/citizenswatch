@@ -3,7 +3,7 @@
 import http from 'node:http';
 
 export function startMock(port = 54321) {
-  const tables = { reports: [], votes: [], rate_events: [], blocked_devices: [], mod_log: [], report_updates: [], update_flags: [] };
+  const tables = { reports: [], votes: [], rate_events: [], blocked_devices: [], mod_log: [], report_updates: [], update_flags: [], media_prints: [] };
   const files = new Map(); // path -> { type, body }
   let seq = 1;
 
@@ -98,17 +98,18 @@ export function startMock(port = 54321) {
     reports: () => ({
       created_at: new Date().toISOString(), media: [], sensitive: false, status: 'pending', reviewed: false,
       mod_override: null, confirms: 0, falses: 0, flags: 0, hidden_reason: null, time_of_day: null, area_label: null,
-      old_media: false, net_fp: null, updates: 0, agency: null, ended_at: null, ended_by: null,
+      old_media: false, net_fp: null, updates: 0, agency: null, ended_at: null, ended_by: null, seen_media: false, seen_of: null,
     }),
     report_updates: () => ({
       created_at: new Date().toISOString(), media: [], sensitive: false, old_media: false, status: 'pending',
-      reviewed: false, flags: 0, hidden_reason: null, caption: null, net_fp: null,
+      reviewed: false, flags: 0, hidden_reason: null, caption: null, net_fp: null, seen_media: false, seen_of: null,
     }),
     update_flags: () => ({ created_at: new Date().toISOString() }),
     votes: () => ({ created_at: new Date().toISOString(), reason: null, net_fp: null }),
     rate_events: () => ({ id: seq++, created_at: new Date().toISOString() }),
     blocked_devices: () => ({ created_at: new Date().toISOString() }),
     mod_log: () => ({ id: seq++, created_at: new Date().toISOString() }),
+    media_prints: () => ({ id: seq++, created_at: new Date().toISOString(), update_id: null }),
   };
   const KEYS = {
     reports: ['id'], votes: ['report_id', 'device_hash', 'kind'], blocked_devices: ['device_hash'],
@@ -188,6 +189,18 @@ export function startMock(port = 54321) {
         return json(res, 200, n);
       }
       if (fn === 'cleanup_old_rows') return json(res, 200, null);
+      if (fn === 'find_similar_prints') {
+        const bits = (a, b) => { let x = BigInt(`0x${a}`) ^ BigInt(`0x${b}`); let n = 0; while (x) { n += Number(x & 1n); x >>= 1n; } return n; };
+        const out = [];
+        for (const p of args.p_prints || []) {
+          if (!/^[0-9a-f]{16}$/.test(p)) continue;
+          const hit = [...tables.media_prints]
+            .sort((a, b) => cmp(a.created_at, b.created_at))
+            .find((m) => (!args.p_exclude || m.report_id !== args.p_exclude) && bits(m.print, p) <= (args.p_max ?? 6));
+          if (hit) out.push({ print: p, report_id: hit.report_id });
+        }
+        return json(res, 200, out);
+      }
       return json(res, 404, { message: `no function ${fn}` });
     }
 
@@ -236,6 +249,10 @@ export function startMock(port = 54321) {
       if (name === 'reports') {
         tables.votes = tables.votes.filter((v) => keep.some((r) => r.id === v.report_id));
         tables.report_updates = tables.report_updates.filter((u) => keep.some((r) => r.id === u.report_id));
+      }
+      if (name === 'reports' || name === 'report_updates') {
+        tables.media_prints = tables.media_prints.filter((m) => tables.reports.some((r) => r.id === m.report_id)
+          && (!m.update_id || tables.report_updates.some((u) => u.id === m.update_id)));
       }
       return json(res, 204);
     }

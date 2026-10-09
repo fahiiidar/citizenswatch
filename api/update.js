@@ -5,6 +5,7 @@ import { select, insert, update, signUpload } from './_lib/supa.js';
 import { deviceHash, ipHash, netFp, verifyHuman, rateLimit, assertNotBlocked } from './_lib/security.js';
 import { validateUpdate, extFor } from './_lib/reports.js';
 import { afterUpdatePublished, recountUpdates } from './_lib/updates.js';
+import { seenBefore, printsOf, notIn } from './_lib/dupes.js';
 
 const REASONS = ['face', 'graphic', 'hate', 'old', 'spam', 'other'];
 
@@ -24,7 +25,7 @@ async function create(cfg, req, res, body) {
   const dHash = deviceHash(cfg, body.device);
   const nf = netFp(cfg, req, body.fp);
 
-  const reports = await select(cfg, 'reports', `select=id,ended_at&id=eq.${reportId}&status=eq.visible`);
+  const reports = await select(cfg, 'reports', `select=id,ended_at,media&id=eq.${reportId}&status=eq.visible`);
   if (!reports.length) throw new HttpError(404, 'That report is no longer available.');
   if (reports[0].ended_at) throw new HttpError(400, 'This incident has been marked as over, so it cannot take new updates.');
 
@@ -36,7 +37,11 @@ async function create(cfg, req, res, body) {
     'Too many updates from this network in the last hour. Please wait a little.');
 
   const id = randomUUID();
-  const media = upd.mediaSpec.map((m, i) => ({ path: `u/${id}/${i}.${extFor(m.type)}`, type: m.type, check: m.check }));
+  const media = upd.mediaSpec.map((m, i) => ({
+    path: `u/${id}/${i}.${extFor(m.type)}`, type: m.type, check: m.check, ...(m.print ? { print: m.print } : {}),
+  }));
+  // Photos already posted on a different report are marked. Matching this report is fine.
+  const seen = await seenBefore(cfg, notIn(printsOf(media), printsOf(reports[0].media)), reportId);
   const finalizeToken = media.length ? randomBytes(24).toString('hex') : null;
   const row = {
     id,
@@ -45,6 +50,7 @@ async function create(cfg, req, res, body) {
     media,
     sensitive: upd.sensitive,
     old_media: upd.old_media,
+    ...(seen.seen_media ? seen : {}),
     device_hash: dHash,
     net_fp: nf,
     finalize_token: finalizeToken,

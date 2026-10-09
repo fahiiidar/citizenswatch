@@ -1,12 +1,13 @@
 // The three-step report flow: where, what and when, then photos and posting.
-import { html, icon, tip, mount, toast, shareReport } from './ui.js';
+import { html, icon, tip, mount, toast, shareReport, openModal } from './ui.js';
 import { api, upload, mine } from './api.js';
-import { CATS, CAT_KEYS, TIME_OF_DAY, AGENCIES, catTitle, lagosDate } from './format.js';
+import { CATS, CAT_KEYS, TIME_OF_DAY, AGENCIES, catTitle, lagosDate, timeAgo, whenLabel, whereLabel, STATUS } from './format.js';
 import { state } from './state.js';
 import { processPhoto, processClip, canProcessClips, classifyTaken, takenLabel } from './media.js';
 import { mountCheck, getToken, resetCheck } from './turnstile.js';
 import * as mapMod from './map.js';
 import { showHome, runSearch, refresh } from './home.js';
+import { prefillUpdate } from './addupdate.js';
 
 const page = document.getElementById('page');
 const CELL = 0.01;
@@ -23,7 +24,7 @@ function fresh() {
     category: null, agency: null, when: 'now', date: lagosDate(), timeOfDay: null, caption: '',
     media: [], keepSound: false, sensitive: false,
     checks: { face: false, forces: false, today: false },
-    error: null, posting: false, progress: 0,
+    error: null, duplicateOf: null, posting: false, progress: 0,
   };
 }
 
@@ -323,7 +324,59 @@ function renderWhat() {
         : draft.when === 'date' && (!draft.date || draft.date > today || draft.date < minDate) ? `Choose a date in the last ${maxDays} days.`
           : null;
     if (problem) { err.hidden = false; err.textContent = problem; err.scrollIntoView({ block: 'center' }); return; }
-    location.hash = '#/report/3';
+    checkSame(q('#next'));
+  });
+}
+
+// ---- Is this the same incident? ----------------------------------------------------
+// Before photos are added, show open reports of the same kind close by, so people
+// strengthen one report instead of scattering ten pins over one attack.
+const REPEAT_MS = 6 * 3600e3;
+async function checkSame(btn) {
+  if (draft.when !== 'now' && draft.when !== 'today') { location.hash = '#/report/3'; return; }
+  btn.disabled = true;
+  let found = [];
+  try {
+    ({ reports: found } = await api.nearby(fuzz(draft.lat), fuzz(draft.lng), draft.category));
+  } catch {
+    found = []; // never block a report because this check failed
+  }
+  btn.disabled = false;
+  if (!found.length) { location.hash = '#/report/3'; return; }
+
+  const posted = mine.posted();
+  const ownRecent = found.find((r) => posted.has(r.id) && Date.now() - Date.parse(r.created_at) < REPEAT_MS);
+  const title = ownRecent ? 'You already reported this' : 'Is this the same incident?';
+  const lead = ownRecent
+    ? 'You posted a report like this here in the last few hours. Add your new photos or details to it, so everything stays in one place.'
+    : `${found.length === 1 ? 'Someone has' : 'People have'} already reported this nearby. If it's the same thing, add to their report. It counts as a confirmation and makes the warning stronger.`;
+  const list = ownRecent ? [ownRecent] : found;
+
+  openModal({
+    title,
+    body: html`<div style="display:flex;flex-direction:column;gap:12px;padding:4px 20px calc(20px + env(safe-area-inset-bottom))">
+      <p class="lead" style="margin:0">${lead}</p>
+      ${list.map((r) => html`<div class="same-card">
+        <span class="row-top"><b style="font-weight:600">${catTitle(r)}</b><span class="badge ${r.status}">${STATUS[r.status]}</span></span>
+        <span class="sub">${whereLabel(r)} · ${whenLabel(r)} · posted ${timeAgo(r.created_at)}${posted.has(r.id) ? ' · by you' : ''}</span>
+        <span class="same-cap">${r.caption}</span>
+        <span class="sub">${r.confirms} confirmed${r.updates ? ` · ${r.updates} update${r.updates === 1 ? '' : 's'}` : ''}</span>
+        <button type="button" class="btn" data-same="${r.id}" style="height:44px;margin-top:4px">${icon('plus', 18)}Add to this one</button>
+      </div>`)}
+      ${ownRecent
+        ? html`<button type="button" class="btn ghost" data-close-same>Change what I'm reporting</button>`
+        : html`<button type="button" class="btn ghost" data-different>No, this is something different</button>`}
+    </div>`,
+    onMount: (modal, close) => {
+      modal.querySelectorAll('[data-same]').forEach((b) => b.addEventListener('click', () => {
+        close();
+        prefillUpdate(b.dataset.same, draft.caption.trim());
+        resetDraft();
+        location.hash = `#/r/${b.dataset.same}/add`;
+      }));
+      modal.querySelector('[data-different]')?.addEventListener('click', () => { close(); location.hash = '#/report/3'; });
+      modal.querySelector('[data-close-same]')?.addEventListener('click', close);
+    },
   });
 }
 
@@ -375,6 +428,7 @@ function renderMedia() {
       </div>
       <div id="turnstile"></div>
       ${draft.error ? html`<p class="error-text" role="alert">${draft.error}</p>` : ''}
+      ${draft.duplicateOf ? html`<button type="button" class="btn ghost" id="to-dup">${icon('plus', 18)}Add to my earlier report</button>` : ''}
     </div></div>
     <div class="page-foot"><div class="wrap" style="display:flex;flex-direction:column;gap:8px">
       ${draft.posting ? html`<div class="progress" aria-label="Posting"><i style="width:${Math.round(draft.progress * 100)}%"></i></div>` : ''}
@@ -431,6 +485,13 @@ function bindMedia() {
     renderMedia();
   }));
   q('#post').addEventListener('click', post);
+  q('#to-dup')?.addEventListener('click', () => {
+    const id = draft.duplicateOf;
+    prefillUpdate(id, draft.caption.trim(), draft.media.filter((m) => !m.busy));
+    draft.media = []; // handed over to the update, so their previews stay alive
+    resetDraft();
+    location.hash = `#/r/${id}/add`;
+  });
 }
 
 async function prepareClip(file) {
@@ -467,6 +528,7 @@ async function prepareClip(file) {
 async function post() {
   if (draft.posting) return;
   draft.error = null;
+  draft.duplicateOf = null;
   draft.posting = true;
   draft.progress = 0.02;
   renderMedia();
@@ -484,7 +546,7 @@ async function post() {
       date: draft.date,
       timeOfDay: draft.when === 'now' ? null : draft.timeOfDay,
       sensitive: draft.sensitive,
-      media: draft.media.map((m) => ({ type: m.type, size: m.blob.size, check: checkOf(m) })),
+      media: draft.media.map((m) => ({ type: m.type, size: m.blob.size, check: checkOf(m), print: m.print || undefined })),
       turnstileToken: token,
     });
     const total = draft.media.reduce((s, m) => s + m.blob.size, 0) || 1;
@@ -511,6 +573,7 @@ async function post() {
   } catch (err) {
     draft.posting = false;
     draft.error = err.message;
+    draft.duplicateOf = err.data?.duplicateOf || null;
     resetCheck();
     renderMedia();
   }
