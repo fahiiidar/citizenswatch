@@ -7,9 +7,10 @@ let map = null;
 let ready = false;
 let failed = false;
 let pending = null;
-const handlers = { area: null, failed: null };
+const handlers = { area: null, failed: null, tap: null };
 
 export function onArea(fn) { handlers.area = fn; }
+export function onTap(fn) { handlers.tap = fn; }
 export function onFailed(fn) { handlers.failed = fn; if (failed) fn(); }
 export function getMap() { return ready ? map : null; }
 export function mapFailed() { return failed; }
@@ -166,6 +167,11 @@ function addLayers() {
       .map((p) => p.properties.id);
     handlers.area?.([...new Set([f.properties.id, ...ids])], f.geometry.coordinates);
     map.easeTo({ center: f.geometry.coordinates, zoom: Math.max(map.getZoom(), 11), padding: sheetPadding() });
+  });
+  // A tap on an empty part of the map (not on a report) names that place.
+  map.on('click', (e) => {
+    const hits = map.queryRenderedFeatures(e.point, { layers: ['clusters', 'points'] });
+    if (!hits.length) handlers.tap?.(e.lngLat);
   });
   for (const layer of ['clusters', 'points']) {
     map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });

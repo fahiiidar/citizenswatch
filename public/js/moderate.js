@@ -1,7 +1,7 @@
 // Private moderation page. Open it at  /#/moderate  and enter your moderator key.
 import { html, icon, mount, toast } from './ui.js';
 import { api, store } from './api.js';
-import { CATS, STATUS, FLAG_REASONS, timeAgo, whenLabel, whereLabel } from './format.js';
+import { CATS, STATUS, FLAG_REASONS, timeAgo, whenLabel, whereLabel, catTitle } from './format.js';
 
 const page = document.getElementById('page');
 const QUEUES = [
@@ -102,7 +102,7 @@ function card(r) {
       ? (m.type.startsWith('video/') ? html`<video src="${m.url}" controls muted playsinline preload="metadata"></video>` : html`<a href="${m.url}" target="_blank" rel="noopener"><img src="${m.url}" alt="Report photo"></a>`)
       : ''))}</div>` : ''}
     <div style="flex:999 1 360px;min-width:0;display:flex;flex-direction:column;gap:6px">
-      <span class="row-top"><b class="cat-${cat.tone}" style="font-weight:600">${cat.name}</b>
+      <span class="row-top"><b class="cat-${cat.tone}" style="font-weight:600">${catTitle(r)}</b>
         <span class="sub">${whereLabel(r)}</span><span class="sub">${whenLabel(r)} · posted ${timeAgo(r.created_at)}</span></span>
       <span style="line-height:1.45;white-space:pre-wrap">${r.caption}</span>
       <span class="row-top">

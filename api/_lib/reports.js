@@ -1,6 +1,7 @@
 import { HttpError } from './http.js';
 
-export const CATEGORIES = ['gunmen', 'kidnapping', 'attack', 'road', 'robbery', 'avoid', 'clear', 'other'];
+export const CATEGORIES = ['gunmen', 'kidnapping', 'attack', 'road', 'robbery', 'avoid', 'officials', 'clear', 'other'];
+export const AGENCIES = ['police', 'army', 'lastma', 'ndlea', 'frsc', 'vio', 'customs', 'immigration', 'nscdc', 'hisbah', 'vigilante', 'taskforce', 'other'];
 export const TIMES_OF_DAY = ['morning', 'afternoon', 'evening', 'night'];
 export const MEDIA_TYPES = ['image/jpeg', 'video/webm', 'video/mp4'];
 export const MAX_PHOTOS = 3;
@@ -44,6 +45,12 @@ export function validateNewReport(body, now = Date.now()) {
 
   const caption = cleanText(body.caption, 280);
   if (caption.length < 3) throw new HttpError(400, 'Describe what happened in a few words.');
+
+  let agency = null;
+  if (category === 'officials') {
+    agency = String(body.agency || '');
+    if (!AGENCIES.includes(agency)) throw new HttpError(400, 'Choose which agency was involved.');
+  }
 
   const placeLabel = cleanText(body.placeLabel, 140);
   if (placeLabel.length < 2) throw new HttpError(400, 'Choose where it happened.');
@@ -99,6 +106,7 @@ export function validateNewReport(body, now = Date.now()) {
 
   return {
     category,
+    agency,
     caption,
     place_label: placeLabel,
     area_label: areaLabel,
@@ -172,6 +180,7 @@ export function mapShape(r, now = Date.now()) {
   return {
     id: r.id,
     category: r.category,
+    agency: r.agency || null,
     status: statusOf(r),
     live: isLive(r, now),
     lat: r.lat,
@@ -215,5 +224,5 @@ export function updateShape(u, urls = {}) {
 }
 
 export const PUBLIC_COLUMNS =
-  'id,created_at,category,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,mod_override,confirms,falses,old_media,updates';
+  'id,created_at,category,is_now,occurred_on,time_of_day,occurred_at,caption,place_label,area_label,lat,lng,media,sensitive,status,mod_override,confirms,falses,old_media,updates,agency';
 export const UPDATE_COLUMNS = 'id,report_id,created_at,caption,media,sensitive,old_media,status';

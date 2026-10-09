@@ -1,7 +1,7 @@
 // The three-step report flow: where, what and when, then photos and posting.
 import { html, icon, tip, mount, toast, shareReport } from './ui.js';
 import { api, upload, mine } from './api.js';
-import { CATS, CAT_KEYS, TIME_OF_DAY, lagosDate } from './format.js';
+import { CATS, CAT_KEYS, TIME_OF_DAY, AGENCIES, catTitle, lagosDate } from './format.js';
 import { state } from './state.js';
 import { processPhoto, processClip, canProcessClips, classifyTaken, takenLabel } from './media.js';
 import { mountCheck, getToken, resetCheck } from './turnstile.js';
@@ -20,7 +20,7 @@ let skipNextMove = false;
 function fresh() {
   return {
     lat: null, lng: null, placeLabel: '', areaLabel: '', placeSub: '', placeEdited: false,
-    category: null, when: 'now', date: lagosDate(), timeOfDay: null, caption: '',
+    category: null, agency: null, when: 'now', date: lagosDate(), timeOfDay: null, caption: '',
     media: [], keepSound: false, sensitive: false,
     checks: { face: false, forces: false, today: false },
     error: null, posting: false, progress: 0,
@@ -202,6 +202,12 @@ function updatePlaceCard() {
   page.querySelector('#next').disabled = draft.placeLabel.trim().length < 2;
 }
 
+// Tapping the map while choosing a place moves the pin there.
+export function pickTap({ lat, lng }) {
+  draft.placeEdited = false;
+  mapMod.flyTo(lng, lat, Math.max(15, mapMod.getMap()?.getZoom() || 15), { top: 0, bottom: 0, left: 0, right: 0 });
+}
+
 function onMapMoved() {
   const c = mapMod.center();
   if (!c) return;
@@ -217,6 +223,9 @@ function onMapMoved() {
       if (!draft.placeEdited) draft.placeLabel = r.label;
       draft.areaLabel = r.area || r.sub;
       draft.placeSub = r.sub;
+      // Show the place in the search bar too, unless the person is typing there.
+      const search = page.querySelector('#pq');
+      if (search && document.activeElement !== search) search.value = r.sub ? `${r.label}, ${r.sub}` : r.label;
     } catch {
       if (!draft.placeLabel) draft.placeSub = 'Could not look up this place. Type its name above.';
     }
@@ -244,6 +253,12 @@ function renderWhat() {
         ${CAT_KEYS.map((k) => html`<button type="button" class="tile" role="radio" data-cat="${k}" aria-checked="${draft.category === k}">
           <span class="ct sm ${CATS[k].tone}">${icon(CATS[k].icon, 18)}</span>${CATS[k].name}
           <span class="tick">${icon('check', 12, 'style="stroke-width:3.2"')}</span></button>`)}
+      </div>
+      <div id="agency-wrap" style="display:flex;flex-direction:column;gap:8px" ${draft.category === 'officials' ? '' : 'hidden'}>
+        <span class="field-label" style="justify-content:flex-start;gap:2px">Which agency? ${tip('officials', 'What counts as harassment by officials')}</span>
+        <div class="wrap-row" role="radiogroup" aria-label="Agency">
+          ${Object.entries(AGENCIES).map(([k, label]) => html`<button type="button" class="pill-choice" role="radio" data-agency="${k}" aria-checked="${draft.agency === k}">${label}</button>`)}
+        </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
         <span class="field-label">When did it happen?</span>
@@ -276,6 +291,13 @@ function renderWhat() {
   page.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => {
     draft.category = b.dataset.cat;
     page.querySelectorAll('[data-cat]').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+    q('#agency-wrap').hidden = draft.category !== 'officials';
+    if (draft.category !== 'officials') draft.agency = null;
+  }));
+  page.querySelectorAll('[data-agency]').forEach((b) => b.addEventListener('click', () => {
+    draft.agency = b.dataset.agency;
+    page.querySelectorAll('[data-agency]').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+    q('#err').hidden = true;
   }));
   page.querySelectorAll('[data-when]').forEach((b) => b.addEventListener('click', () => {
     draft.when = b.dataset.when;
@@ -296,6 +318,7 @@ function renderWhat() {
   q('#next').addEventListener('click', () => {
     const err = q('#err');
     const problem = !draft.category ? 'Choose what happened.'
+      : draft.category === 'officials' && !draft.agency ? 'Choose which agency was involved.'
       : draft.caption.trim().length < 3 ? 'Describe what happened in a few words.'
         : draft.when === 'date' && (!draft.date || draft.date > today || draft.date < minDate) ? `Choose a date in the last ${maxDays} days.`
           : null;
@@ -347,7 +370,7 @@ function renderMedia() {
       </fieldset>` : ''}
       <div style="padding:12px 14px;background:var(--soft-2);border-radius:16px;display:flex;gap:12px;align-items:center">
         <span class="ct sm ${c.tone}">${icon(c.icon, 18)}</span>
-        <span style="display:flex;flex-direction:column;gap:1px;min-width:0"><b style="font-weight:600">${c.name} · ${whenText}${draft.timeOfDay && draft.when !== 'now' ? `, ${draft.timeOfDay}` : ''}</b>
+        <span style="display:flex;flex-direction:column;gap:1px;min-width:0"><b style="font-weight:600">${catTitle({ category: draft.category, agency: draft.agency })} · ${whenText}${draft.timeOfDay && draft.when !== 'now' ? `, ${draft.timeOfDay}` : ''}</b>
         <span class="sub ellipsis">${draft.placeLabel} · no name or account ${tip('anonymous', 'How you stay anonymous')}</span></span>
       </div>
       <div id="turnstile"></div>
@@ -451,6 +474,7 @@ async function post() {
     const token = await getToken();
     const res = await api.create({
       category: draft.category,
+      agency: draft.category === 'officials' ? draft.agency : null,
       caption: draft.caption.trim(),
       placeLabel: draft.placeLabel.trim(),
       areaLabel: draft.areaLabel,
@@ -478,7 +502,7 @@ async function post() {
     mine.addPosted(res.id);
     lastPosted = {
       id: res.id,
-      title: (CATS[draft.category] || CATS.other).name,
+      title: catTitle({ category: draft.category, agency: draft.agency }),
       where: draft.areaLabel || draft.placeLabel,
     };
     resetDraft();

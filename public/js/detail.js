@@ -1,7 +1,7 @@
 // One report, opened from the map, a list or a shared link.
 import { html, icon, tip, mount, openModal, toast, shareReport } from './ui.js';
 import { api, mine } from './api.js';
-import { CATS, STATUS, FLAG_REASONS, whenLabel, timeAgo, whereLabel } from './format.js';
+import { CATS, STATUS, FLAG_REASONS, whenLabel, timeAgo, whereLabel, catTitle } from './format.js';
 import { state } from './state.js';
 
 const page = document.getElementById('page');
@@ -55,7 +55,7 @@ function render() {
         <div style="display:flex;gap:12px;align-items:center">
           <span class="ct lg ${c.tone}">${icon(c.icon, 22)}</span>
           <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
-            <h1 style="margin:0;font-size:24px;font-weight:700;letter-spacing:-0.5px;line-height:1.1">${c.name}</h1>
+            <h1 style="margin:0;font-size:24px;font-weight:700;letter-spacing:-0.5px;line-height:1.1">${catTitle(r)}</h1>
             <span class="row-top sub">${r.live ? html`<span class="badge live">Live</span>` : r.is_now ? '' : html`<span class="badge past">Reported later</span>`}${whenLabel(r)} · posted ${timeAgo(r.created_at)}</span>
           </div>
         </div>
@@ -164,7 +164,7 @@ function bind() {
   const q = (s) => page.querySelector(s);
   q('#share')?.addEventListener('click', () => shareReport({
     id: r.id,
-    title: (CATS[r.category] || CATS.other).name,
+    title: catTitle(r),
     where: r.area_label || r.place_label,
   }));
   q('#reveal')?.addEventListener('click', () => { revealed = true; render(); });

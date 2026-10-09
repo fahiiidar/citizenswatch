@@ -3,10 +3,10 @@ import { api } from './api.js';
 import { state } from './state.js';
 import { toast, mount, html } from './ui.js';
 import * as mapMod from './map.js';
-import { renderHome, refresh, openArea, showHome, setSnap } from './home.js';
+import { renderHome, refresh, openArea, showHome, setSnap, homeTap } from './home.js';
 import { openDetail } from './detail.js';
 import { openAddUpdate } from './addupdate.js';
-import { openReport, leaveReport } from './report.js';
+import { openReport, leaveReport, pickTap } from './report.js';
 import { openModerate } from './moderate.js';
 
 const page = document.getElementById('page');
@@ -24,6 +24,10 @@ async function start() {
 
   renderHome();
   mapMod.onArea((ids) => openArea(ids));
+  mapMod.onTap((lngLat) => {
+    if (location.hash === '#/report/1' || location.hash === '#/report') return pickTap(lngLat);
+    if (!location.hash || location.hash === '#/' || location.hash === '#') homeTap(lngLat);
+  });
   mapMod.onFailed(() => setSnap('full'));
   mapMod.initMap('map', state.config.mapStyle);
 

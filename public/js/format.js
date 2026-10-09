@@ -7,10 +7,34 @@ export const CATS = {
   road: { name: 'Road unsafe', icon: 'street', tone: 'amber' },
   robbery: { name: 'Robbery', icon: 'bag', tone: 'amber' },
   avoid: { name: 'Area to avoid', icon: 'ban', tone: 'amber' },
+  officials: { name: 'Harassment by officials', icon: 'badge', tone: 'amber' },
   clear: { name: 'All clear', icon: 'shield', tone: 'green' },
   other: { name: 'Something else', icon: 'more', tone: 'grey' },
 };
 export const CAT_KEYS = Object.keys(CATS);
+
+// Who was involved, for "Harassment by officials".
+export const AGENCIES = {
+  police: 'Police',
+  army: 'Army',
+  lastma: 'LASTMA',
+  ndlea: 'NDLEA',
+  frsc: 'FRSC',
+  vio: 'VIO',
+  customs: 'Customs',
+  immigration: 'Immigration',
+  nscdc: 'Civil Defence',
+  hisbah: 'Hisbah',
+  vigilante: 'Vigilante',
+  taskforce: 'State task force',
+  other: 'Other agency',
+};
+
+// "Harassment by officials · Police"
+export function catTitle(r) {
+  const c = CATS[r.category] || CATS.other;
+  return r.category === 'officials' && r.agency ? `${c.name} · ${AGENCIES[r.agency] || 'Other agency'}` : c.name;
+}
 export const TONE_COLOR = { red: '#D92D20', amber: '#DC6803', green: '#079455', grey: '#667085' };
 
 export const STATUS = {
@@ -98,6 +122,10 @@ export const TIPS = {
   updates: {
     title: 'Updates from others',
     text: 'People nearby can add their own photos or words to a report. Each update also counts as a confirmation. Updates are checked the same way as reports.',
+  },
+  officials: {
+    title: 'Harassment by officials',
+    text: 'Extortion, beatings, illegal arrests or phone searches by police, soldiers, LASTMA, NDLEA or other officials. Describe what happened, not who: no names or badge numbers.',
   },
   anonymous: {
     title: 'How you stay anonymous',

@@ -2,7 +2,7 @@
 import { html, icon, tip, mount, openModal, toast } from './ui.js';
 import { api } from './api.js';
 import { state, saveFilters, setReports } from './state.js';
-import { CATS, CAT_KEYS, STATUS, RANGES, rangeTitle, shortAgo, whereLabel, timeAgo, lagosDate } from './format.js';
+import { CATS, CAT_KEYS, STATUS, RANGES, rangeTitle, shortAgo, whereLabel, timeAgo, lagosDate, catTitle } from './format.js';
 import * as mapMod from './map.js';
 
 const root = document.getElementById('home');
@@ -222,6 +222,38 @@ export async function runSearch(q, box, onPick) {
   }
 }
 
+// Tapping an empty spot on the map: name it in the search bar and offer to report there.
+export async function homeTap({ lat, lng }) {
+  const input = root.querySelector('#q');
+  const box = root.querySelector('#results');
+  if (!input || root.hidden) return;
+  input.value = 'Finding this place…';
+  try {
+    const { results } = await api.reverse(lat, lng);
+    const r = results[0];
+    if (!r) { input.value = ''; return; }
+    input.value = r.sub ? `${r.label}, ${r.sub}` : r.label;
+    mount(box, html`
+      <div class="result" style="cursor:default">
+        <span class="result-ic street">${icon('pin', 18)}</span>
+        <span style="min-width:0"><b>${r.label}</b><small>${r.sub || r.area || ''}</small></span>
+      </div>
+      <button type="button" class="result" id="report-here-tap">
+        <span class="result-ic" style="background:var(--red-soft);color:var(--red-icon)">${icon('plus', 18)}</span>
+        <span><b>Report something here</b><small>Starts a report at this spot</small></span>
+      </button>`);
+    box.hidden = false;
+    box.querySelector('#report-here-tap').addEventListener('click', () => {
+      box.hidden = true;
+      sessionStorage.setItem('cw_report_start', JSON.stringify({ lat, lng }));
+      location.hash = '#/report/1';
+    });
+  } catch {
+    input.value = '';
+    toast('Could not look up that place. Try searching instead.');
+  }
+}
+
 function locateMe() {
   if (!navigator.geolocation) { toast('Your browser cannot share its location.'); return; }
   toast('Finding your area… Your location stays on this phone.');
@@ -386,7 +418,7 @@ function rowFor(r) {
   return html`<a class="row-link" href="#/r/${r.id}">
     <span class="ct ${c.tone}">${icon(c.icon, 20)}</span>
     <span class="row-main">
-      <span class="row-top"><b>${c.name}</b>${statusBadge(r)}</span>
+      <span class="row-top"><b>${catTitle(r)}</b>${statusBadge(r)}</span>
       <span class="sub ellipsis">${whereLabel(r)}</span>
     </span>
     <span class="sub tnum">${shortAgo(r.occurred_at)}</span>
@@ -483,7 +515,7 @@ function cardFor(r) {
   return html`<a class="card" href="#/r/${r.id}">
     <span class="ct ${c.tone}">${icon(c.icon, 20)}</span>
     <span class="row-main" style="gap:4px">
-      <span class="row-top"><b>${c.name}</b>${r.live ? html`<span class="badge live">Live</span>` : ''}</span>
+      <span class="row-top"><b>${catTitle(r)}</b>${r.live ? html`<span class="badge live">Live</span>` : ''}</span>
       <span class="clamp" style="font-size:14px;line-height:1.4;color:var(--ink-2)">${r.caption}</span>
       <span class="row-top sub"><span class="badge ${r.status}">${STATUS[r.status]}</span>${r.confirms} confirmation${r.confirms === 1 ? '' : 's'}${r.updates ? ` · ${r.updates} update${r.updates === 1 ? '' : 's'}` : ''} · ${shortAgo(r.occurred_at)}</span>
       ${r.old_media ? html`<span class="sub" style="color:var(--amber-ink);font-weight:600">Photo may be old</span>` : ''}

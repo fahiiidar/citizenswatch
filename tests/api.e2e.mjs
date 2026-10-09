@@ -208,4 +208,16 @@ r = await call('/api/mod', { method: 'POST', headers: MOD, body: { id: id4, acti
 r = await call(`/api/reports?ids=${id4}`);
 ok('deleting a report also removes its updates', r.data.reports.length === 0);
 
+// ---- Harassment by officials ----
+r = await call('/api/reports', { method: 'POST', body: { ...report, category: 'officials', caption: 'Checkpoint asking every bus for N2000', device: dev(80) }, ip: '13.0.0.1' });
+ok('officials reports must say which agency', r.status === 400 && /agency/.test(r.data.error));
+r = await call('/api/reports', { method: 'POST', body: { ...report, category: 'officials', agency: 'police', caption: 'Checkpoint asking every bus for N2000', device: dev(80) }, ip: '13.0.0.1' });
+const id6 = r.data.id;
+r = await call(`/api/reports?ids=${id6}`);
+ok('the agency is stored and shown', r.data.reports[0].category === 'officials' && r.data.reports[0].agency === 'police');
+r = await call('/api/reports?range=24h&cats=officials');
+ok('officials reports can be filtered on the map', r.data.reports.length === 1 && r.data.reports[0].agency === 'police');
+r = await call(`/r/${id6}`);
+ok('shared link names the category', String(r.data).includes('Harassment by officials'));
+
 console.log(`\n${passed} checks passed`);
