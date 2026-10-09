@@ -439,7 +439,7 @@ function renderMedia() {
         <span style="display:flex;flex-direction:column;gap:1px;min-width:0"><b style="font-weight:600">${catTitle({ category: draft.category, agency: draft.agency })} · ${whenText}${draft.time && draft.when !== 'now' ? `, ${draft.time}` : ''}</b>
         <span class="sub ellipsis">${draft.placeLabel} · no name or account ${tip('anonymous', 'How you stay anonymous')}</span></span>
       </div>
-      <div id="turnstile"></div>
+      <div id="cf-check"></div>
       ${draft.error ? html`<p class="error-text" role="alert">${draft.error}</p>` : ''}
       ${draft.duplicateOf ? html`<button type="button" class="btn ghost" id="to-dup">${icon('plus', 18)}Add to my earlier report</button>` : ''}
     </div></div>
@@ -451,7 +451,7 @@ function renderMedia() {
   </section>`);
 
   bindMedia();
-  mountCheck(page.querySelector('#turnstile')).then((err) => { if (err) toast(err); });
+  mountCheck(page.querySelector('#cf-check')).then((err) => { if (err) toast(err); });
 }
 
 function bindMedia() {

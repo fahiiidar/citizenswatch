@@ -4,15 +4,20 @@ import { state } from './state.js';
 let widget = null;
 let token = null;
 let waiters = [];
+let failure = null;
+
+// Note: never give an element the id "turnstile" — browsers expose ids as
+// window.<id>, which would hide Cloudflare's window.turnstile.
+const ready = () => typeof window.turnstile?.render === 'function';
 
 function load() {
-  if (window.turnstile) return Promise.resolve();
+  if (ready()) return Promise.resolve();
   if (window._tsLoading) return window._tsLoading;
   window._tsLoading = new Promise((resolve, reject) => {
     const s = document.createElement('script');
     s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
     s.async = true;
-    s.onload = resolve;
+    s.onload = () => (ready() ? resolve() : reject(new Error('The security check could not start. Reload the page and try again.')));
     s.onerror = () => { window._tsLoading = null; reject(new Error('The security check could not load. Check your connection.')); };
     document.head.appendChild(s);
   });
@@ -23,6 +28,7 @@ function load() {
 export async function mountCheck(box) {
   const key = state.config?.turnstileSiteKey;
   if (!key || !box) return null;
+  failure = null;
   try {
     await load();
     if (!document.body.contains(box)) return null;
@@ -36,13 +42,17 @@ export async function mountCheck(box) {
     });
     return null;
   } catch (err) {
-    return err.message;
+    window._tsLoading = null;
+    failure = err.message || 'The security check could not load. Reload the page and try again.';
+    waiters = [];
+    return failure;
   }
 }
 
 export function getToken() {
   if (!state.config?.turnstileSiteKey) return Promise.resolve(null);
   if (token) return Promise.resolve(token);
+  if (failure) return Promise.reject(new Error(failure));
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('The security check is taking too long. Tap Post again.')), 20000);
     waiters.push((t) => { clearTimeout(timer); resolve(t); });
@@ -52,5 +62,5 @@ export function getToken() {
 // Tokens work once; get a fresh one after each attempt.
 export function resetCheck() {
   token = null;
-  if (window.turnstile && widget !== null) { try { window.turnstile.reset(widget); } catch { /* ignore */ } }
+  if (ready() && widget !== null) { try { window.turnstile.reset(widget); } catch { /* ignore */ } }
 }

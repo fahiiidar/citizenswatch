@@ -108,7 +108,7 @@ function render() {
         <label class="check-row"><input type="checkbox" data-check="forces" ${d.checks.forces ? 'checked' : ''}>It doesn't show where soldiers, police or people hiding are</label>
         <label class="check-row"><input type="checkbox" data-check="here" ${d.checks.here ? 'checked' : ''}>I took it myself, at this place</label>
       </fieldset>` : ''}
-      <div id="turnstile"></div>
+      <div id="cf-check"></div>
       ${d.error ? html`<p class="error-text" role="alert">${d.error}</p>` : ''}
     </div></div>
     <div class="page-foot"><div class="wrap" style="display:flex;flex-direction:column;gap:8px">
@@ -117,7 +117,7 @@ function render() {
     </div></div>
   </section>`);
   bind();
-  mountCheck(page.querySelector('#turnstile')).then((err) => { if (err) toast(err); });
+  mountCheck(page.querySelector('#cf-check')).then((err) => { if (err) toast(err); });
 }
 
 function updatePostButton() {
