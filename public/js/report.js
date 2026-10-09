@@ -1,0 +1,561 @@
+// The three-step report flow: where, what and when, then photos and posting.
+import { html, icon, tip, mount, toast, shareReport } from './ui.js';
+import { api, upload, mine } from './api.js';
+import { CATS, CAT_KEYS, TIME_OF_DAY, lagosDate } from './format.js';
+import { state } from './state.js';
+import { processPhoto, processClip, canProcessClips } from './media.js';
+import * as mapMod from './map.js';
+import { showHome, runSearch, refresh } from './home.js';
+
+const page = document.getElementById('page');
+const CELL = 0.01;
+
+let draft = fresh();
+let lastPosted = null;
+let unbindMove = null;
+let reverseTimer = null;
+let skipNextMove = false;
+
+function fresh() {
+  return {
+    lat: null, lng: null, placeLabel: '', areaLabel: '', placeSub: '', placeEdited: false,
+    category: null, when: 'now', date: lagosDate(), timeOfDay: null, caption: '',
+    media: [], keepSound: false, sensitive: false,
+    checks: { face: false, forces: false, today: false },
+    error: null, posting: false, progress: 0,
+  };
+}
+
+const fuzz = (v) => Math.round((Math.floor(v / CELL) * CELL + CELL / 2) * 10000) / 10000;
+
+export function openReport(step) {
+  if (unbindMove) { unbindMove(); unbindMove = null; }
+  if (step === 'done') return renderDone();
+  if (step !== '1' && draft.lat === null) { location.hash = '#/report/1'; return; }
+  if (step === '2') return renderWhat();
+  if (step === '3') return renderMedia();
+  return renderWhere();
+}
+
+export function leaveReport() {
+  if (unbindMove) { unbindMove(); unbindMove = null; }
+  clearTimeout(reverseTimer);
+}
+
+export function resetDraft() {
+  draft.media.forEach((m) => m.preview && URL.revokeObjectURL(m.preview));
+  draft = fresh();
+}
+
+function stepBar(n) {
+  return html`<div class="steps" aria-hidden="true">${[1, 2, 3].map((i) => html`<span class="${i <= n ? 'on' : ''}"></span>`)}</div>`;
+}
+
+function header(n, backHref) {
+  return html`<header class="page-head">
+    ${backHref
+      ? html`<a class="round-btn" href="${backHref}" aria-label="Back">${icon('back', 22)}</a>`
+      : html`<a class="round-btn" href="#/" aria-label="Cancel report" id="cancel">${icon('x', 18, 'style="stroke-width:2.2"')}</a>`}
+    <span class="t">New report</span>
+    <span class="sub tnum" style="width:40px;text-align:right">${n}/3</span>
+  </header>`;
+}
+
+// ---- Step 1: where ------------------------------------------------------------
+function renderWhere() {
+  const mapOk = Boolean(mapMod.getMap());
+  if (mapOk) showHome(false);
+
+  if (mapOk) {
+    mount(page, html`<div class="page transparent" aria-label="Choose where it happened">
+      <div class="pick-top"><div class="wrap">
+        ${header(1)}
+        ${stepBar(1)}
+        <div style="padding:16px 20px 14px;display:flex;flex-direction:column;gap:12px">
+          <h1 class="big">Where is it happening?</h1>
+          ${searchField()}
+        </div>
+      </div></div>
+      <span class="pick-ring" aria-hidden="true"></span>
+      <svg class="pick-pin" width="40" height="50" viewBox="0 0 40 50" aria-hidden="true"><path d="M20 2C10.1 2 2 9.8 2 19.4 2 32.3 20 48 20 48s18-15.7 18-28.6C38 9.8 29.9 2 20 2z" fill="#0E1A14"/><circle cx="20" cy="19" r="6.5" fill="#fff"/></svg>
+      <div class="pick-bottom"><div class="wrap" style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;justify-content:flex-end"><button type="button" class="round-btn float" id="pick-locate" aria-label="Use my current location" style="color:var(--blue)">${icon('arrow', 20)}</button></div>
+        ${placeCard()}
+        <button type="button" class="btn" id="next" ${draft.placeLabel ? '' : 'disabled'}>Continue${icon('next', 18, 'style="stroke-width:2.4"')}</button>
+      </div></div>
+    </div>`);
+    mapMod.clearPadding();
+    const start = JSON.parse(sessionStorage.getItem('cw_report_start') || 'null');
+    sessionStorage.removeItem('cw_report_start');
+    if (draft.lat !== null) mapMod.flyTo(draft.lng, draft.lat, 15, { top: 0, bottom: 0, left: 0, right: 0 });
+    else if (start) mapMod.flyTo(start.lng, start.lat, 14, { top: 0, bottom: 0, left: 0, right: 0 });
+    else mapMod.zoomTo(12);
+    unbindMove = mapMod.onMoveEnd(onMapMoved);
+    onMapMoved();
+  } else {
+    mount(page, html`<section class="page" aria-label="Choose where it happened">
+      ${header(1)}${stepBar(1)}
+      <div class="page-scroll"><div class="wrap" style="padding:20px;display:flex;flex-direction:column;gap:14px">
+        <h1 class="big">Where is it happening?</h1>
+        <p class="lead" style="margin:0">The map could not load, so search for the street, landmark or area instead.</p>
+        ${searchField()}
+        ${draft.placeLabel ? placeCard() : ''}
+      </div></div>
+      <div class="page-foot"><div class="wrap"><button type="button" class="btn" id="next" ${draft.placeLabel ? '' : 'disabled'}>Continue${icon('next', 18, 'style="stroke-width:2.4"')}</button></div></div>
+    </section>`);
+  }
+  bindWhere();
+}
+
+function searchField() {
+  return html`<div class="search" role="search" style="box-shadow:none;border:1.5px solid var(--line-2);height:50px">
+    ${icon('search', 18, 'style="color:var(--muted)"')}
+    <label for="pq" class="sr">Search a street, landmark or area</label>
+    <input id="pq" type="search" placeholder="Search a street, landmark or area" autocomplete="off" enterkeyhint="search">
+    <div class="results" id="presults" role="listbox" aria-label="Places" hidden style="top:56px"></div>
+  </div>`;
+}
+
+function placeCard() {
+  return html`<div class="place-card" id="place-card">
+    <label for="plabel" class="sr">Name of the spot</label>
+    <input id="plabel" class="input" style="height:40px;border-width:0 0 1.5px;border-radius:0;padding:0;font-weight:600" value="${draft.placeLabel}" placeholder="Name the street or landmark" maxlength="140">
+    <span class="sub">${draft.placeSub || draft.areaLabel || 'Move the map to the place'}</span>
+    <span style="display:flex;align-items:center;gap:4px;font-size:13px;color:var(--blue);font-weight:500">Others see the road and area, not this exact spot ${tip('approx', 'Why the exact spot is hidden', 'inherit')}</span>
+  </div>`;
+}
+
+function bindWhere() {
+  const input = page.querySelector('#pq');
+  const box = page.querySelector('#presults');
+  let timer;
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 2) { box.hidden = true; return; }
+    timer = setTimeout(() => runSearch(q, box, (r) => {
+      box.hidden = true;
+      input.value = '';
+      input.blur();
+      Object.assign(draft, {
+        lat: r.lat, lng: r.lng, placeLabel: r.label, areaLabel: r.area || r.sub, placeSub: r.sub, placeEdited: false,
+      });
+      if (mapMod.getMap()) {
+        skipNextMove = true;
+        mapMod.flyTo(r.lng, r.lat, r.kind === 'area' ? 13 : 16, { top: 0, bottom: 0, left: 0, right: 0 });
+        updatePlaceCard();
+      } else {
+        renderWhere();
+      }
+    }), 300);
+  });
+  page.querySelector('#plabel')?.addEventListener('input', (e) => {
+    draft.placeLabel = e.target.value.trimStart();
+    draft.placeEdited = true;
+    page.querySelector('#next').disabled = draft.placeLabel.trim().length < 2;
+  });
+  page.querySelector('#pick-locate')?.addEventListener('click', () => {
+    if (!navigator.geolocation) return toast('Your browser cannot share its location.');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => mapMod.flyTo(pos.coords.longitude, pos.coords.latitude, 16, { top: 0, bottom: 0, left: 0, right: 0 }),
+      () => toast('Location is turned off. Search or move the map instead.'),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  });
+  page.querySelector('#next').addEventListener('click', () => {
+    if (draft.lat === null || draft.placeLabel.trim().length < 2) return;
+    const lat = draft.lat;
+    const lng = draft.lng;
+    if (lat < 4 || lat > 14 || lng < 2.6 || lng > 14.8) {
+      toast('That place is outside Nigeria. Move the map and try again.');
+      return;
+    }
+    location.hash = '#/report/2';
+  });
+}
+
+function updatePlaceCard() {
+  const card = page.querySelector('#place-card');
+  if (!card) return;
+  const tmp = document.createElement('div');
+  mount(tmp, placeCard());
+  card.replaceWith(tmp.firstElementChild);
+  page.querySelector('#plabel').addEventListener('input', (e) => {
+    draft.placeLabel = e.target.value.trimStart();
+    draft.placeEdited = true;
+    page.querySelector('#next').disabled = draft.placeLabel.trim().length < 2;
+  });
+  page.querySelector('#next').disabled = draft.placeLabel.trim().length < 2;
+}
+
+function onMapMoved() {
+  const c = mapMod.center();
+  if (!c) return;
+  draft.lat = c.lat;
+  draft.lng = c.lng;
+  if (skipNextMove) { skipNextMove = false; return; }
+  clearTimeout(reverseTimer);
+  reverseTimer = setTimeout(async () => {
+    try {
+      const { results } = await api.reverse(c.lat, c.lng);
+      const r = results[0];
+      if (!r || !page.querySelector('#place-card')) return;
+      if (!draft.placeEdited) draft.placeLabel = r.label;
+      draft.areaLabel = r.area || r.sub;
+      draft.placeSub = r.sub;
+    } catch {
+      if (!draft.placeLabel) draft.placeSub = 'Could not look up this place. Type its name above.';
+    }
+    updatePlaceCard();
+  }, 450);
+}
+
+// ---- Step 2: what and when -------------------------------------------------------
+function renderWhat() {
+  showHome(true);
+  const maxDays = state.config?.maxDaysBack || 30;
+  const today = lagosDate();
+  const minDate = lagosDate(Date.now() - maxDays * 86400e3);
+  const whenOpts = [
+    ['now', html`<span style="width:7px;height:7px;border-radius:4px;background:var(--red)"></span>Happening now`],
+    ['today', 'Earlier today'],
+    ['yesterday', 'Yesterday'],
+    ['date', html`${icon('calendar', 16)}Pick a date`],
+  ];
+  mount(page, html`<section class="page" aria-label="What happened">
+    ${header(2, '#/report/1')}${stepBar(2)}
+    <div class="page-scroll"><div class="wrap" style="padding:18px 20px 20px;display:flex;flex-direction:column;gap:18px">
+      <h1 class="big">What happened?</h1>
+      <div class="tiles" role="radiogroup" aria-label="Category">
+        ${CAT_KEYS.map((k) => html`<button type="button" class="tile" role="radio" data-cat="${k}" aria-checked="${draft.category === k}">
+          <span class="ct sm ${CATS[k].tone}">${icon(CATS[k].icon, 18)}</span>${CATS[k].name}
+          <span class="tick">${icon('check', 12, 'style="stroke-width:3.2"')}</span></button>`)}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span class="field-label">When did it happen?</span>
+        <div class="wrap-row" role="radiogroup" aria-label="When">
+          ${whenOpts.map(([k, label]) => html`<button type="button" class="pill-choice" role="radio" data-when="${k}" aria-checked="${draft.when === k}">${label}</button>`)}
+        </div>
+        <div id="date-wrap" ${draft.when === 'date' ? '' : 'hidden'}>
+          <label for="date" class="sr">Date</label>
+          <input id="date" class="input" type="date" min="${minDate}" max="${today}" value="${draft.date}">
+          <span class="sub" style="display:block;margin-top:6px">Up to ${maxDays} days ago.</span>
+        </div>
+        <div id="tod" style="display:flex;flex-direction:column;gap:8px;margin-top:4px" ${draft.when === 'now' ? 'hidden' : ''}>
+          <span class="sub" style="display:flex;align-items:center;gap:2px">Roughly what time? <span style="color:var(--faint)">(optional)</span>${tip('timeOfDay', 'Why we do not ask for an exact time')}</span>
+          <div class="seg" role="radiogroup" aria-label="Time of day">
+            ${Object.entries(TIME_OF_DAY).map(([k, label]) => html`<button type="button" role="radio" data-tod="${k}" aria-checked="${draft.timeOfDay === k}">${label}</button>`)}
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span class="field-label"><label for="caption">Describe it</label><span class="sub" style="display:flex;align-items:center;gap:2px">Posting rules ${tip('rules', 'Read the posting rules')}</span></span>
+        <textarea id="caption" class="textarea" rows="3" maxlength="280" placeholder="What did you see, and where exactly?">${draft.caption}</textarea>
+        <span class="sub" style="display:flex;justify-content:space-between;gap:12px"><span>Say what and where. No names, no blaming groups.</span><span class="tnum" id="count">${draft.caption.length}/280</span></span>
+      </div>
+      <p class="error-text" id="err" hidden></p>
+    </div></div>
+    <div class="page-foot"><div class="wrap"><button type="button" class="btn" id="next">Continue${icon('next', 18, 'style="stroke-width:2.4"')}</button></div></div>
+  </section>`);
+
+  const q = (s) => page.querySelector(s);
+  page.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => {
+    draft.category = b.dataset.cat;
+    page.querySelectorAll('[data-cat]').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+  }));
+  page.querySelectorAll('[data-when]').forEach((b) => b.addEventListener('click', () => {
+    draft.when = b.dataset.when;
+    page.querySelectorAll('[data-when]').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+    q('#date-wrap').hidden = draft.when !== 'date';
+    q('#tod').hidden = draft.when === 'now';
+    if (draft.when === 'now') draft.timeOfDay = null;
+  }));
+  page.querySelectorAll('[data-tod]').forEach((b) => b.addEventListener('click', () => {
+    draft.timeOfDay = draft.timeOfDay === b.dataset.tod ? null : b.dataset.tod;
+    page.querySelectorAll('[data-tod]').forEach((x) => x.setAttribute('aria-checked', String(x.dataset.tod === draft.timeOfDay)));
+  }));
+  q('#date').addEventListener('change', (e) => { draft.date = e.target.value; });
+  q('#caption').addEventListener('input', (e) => {
+    draft.caption = e.target.value;
+    q('#count').textContent = `${draft.caption.length}/280`;
+  });
+  q('#next').addEventListener('click', () => {
+    const err = q('#err');
+    const problem = !draft.category ? 'Choose what happened.'
+      : draft.caption.trim().length < 3 ? 'Describe what happened in a few words.'
+        : draft.when === 'date' && (!draft.date || draft.date > today || draft.date < minDate) ? `Choose a date in the last ${maxDays} days.`
+          : null;
+    if (problem) { err.hidden = false; err.textContent = problem; err.scrollIntoView({ block: 'center' }); return; }
+    location.hash = '#/report/3';
+  });
+}
+
+// ---- Step 3: photos, checks and posting ---------------------------------------------
+function renderMedia() {
+  showHome(true);
+  const c = CATS[draft.category] || CATS.other;
+  const maxPhotos = state.config?.maxPhotos || 3;
+  const hasClip = draft.media.some((m) => m.type.startsWith('video/'));
+  const photoCount = draft.media.filter((m) => m.type === 'image/jpeg').length;
+  const busy = draft.media.some((m) => m.busy);
+  const needsChecks = draft.media.length > 0;
+  const checksOk = !needsChecks || Object.values(draft.checks).every(Boolean);
+  const whenText = draft.when === 'now' ? 'Happening now' : draft.when === 'today' ? 'Earlier today'
+    : draft.when === 'yesterday' ? 'Yesterday' : draft.date;
+
+  mount(page, html`<section class="page" aria-label="Photos and posting">
+    ${header(3, '#/report/2')}${stepBar(3)}
+    <div class="page-scroll"><div class="wrap" style="padding:18px 20px 20px;display:flex;flex-direction:column;gap:16px">
+      <div>
+        <h1 class="big" style="display:flex;align-items:center;gap:10px">Add photos <span class="badge unverified" style="height:24px">Optional</span></h1>
+        <p class="lead">Up to ${maxPhotos} photos, or one clip. Clips are cut to 30 seconds.</p>
+      </div>
+      <div class="media-grid">
+        ${draft.media.map((m, i) => html`<div class="media-tile">
+          ${m.preview ? (m.type.startsWith('video/') ? html`<video src="${m.preview}" muted playsinline></video>` : html`<img src="${m.preview}" alt="Your photo ${i + 1}">`) : ''}
+          ${m.busy ? html`<div class="busy">${m.label}<div class="progress" style="width:70%"><i style="width:${Math.round((m.progress || 0) * 100)}%"></i></div></div>` : ''}
+          ${m.busy ? '' : html`<button type="button" class="x" data-remove="${i}" aria-label="Remove">${icon('x', 13, 'style="stroke-width:2.8"')}</button>`}
+        </div>`)}
+        ${!hasClip && photoCount < maxPhotos ? html`<label class="add-tile">${icon('camera', 22)}Photo<input type="file" accept="image/*" id="add-photo" ${photoCount < maxPhotos - 1 ? 'multiple' : ''}></label>` : ''}
+        ${!draft.media.length ? html`<label class="add-tile">${icon('video', 22)}Clip<input type="file" accept="video/*" id="add-clip"></label>` : ''}
+      </div>
+      ${draft.media.length ? html`<span style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--green);font-weight:500">${icon('shield', 16)}Location and phone details removed ${tip('photoData', 'What we remove from photos', 'inherit')}</span>` : ''}
+      ${hasClip ? html`<div class="toggle-row"><span style="display:flex;align-items:center;gap:2px">Keep the sound ${tip('sound', 'Why sound is off')}</span>
+        <label class="switch"><input type="checkbox" id="sound" ${draft.keepSound ? 'checked' : ''} aria-label="Keep the sound"><span></span></label></div>` : ''}
+      ${draft.media.length ? html`<div class="toggle-row"><span style="display:flex;align-items:center;gap:2px">Shows injuries or bodies ${tip('sensitive', 'What this does')}</span>
+        <label class="switch"><input type="checkbox" id="sensitive" ${draft.sensitive ? 'checked' : ''} aria-label="Shows injuries or bodies"><span></span></label></div>` : ''}
+      ${needsChecks ? html`<fieldset style="border:0;padding:0;margin:0">
+        <legend class="field-label" style="margin-bottom:4px">Before you post, check that</legend>
+        <label class="check-row"><input type="checkbox" data-check="face" ${draft.checks.face ? 'checked' : ''}>It doesn't show my face, my home or my voice</label>
+        <label class="check-row"><input type="checkbox" data-check="forces" ${draft.checks.forces ? 'checked' : ''}>It doesn't show where soldiers, police or people hiding are</label>
+        <label class="check-row"><input type="checkbox" data-check="today" ${draft.checks.today ? 'checked' : ''}>I took it myself, at this place</label>
+      </fieldset>` : ''}
+      <div style="padding:12px 14px;background:var(--soft-2);border-radius:16px;display:flex;gap:12px;align-items:center">
+        <span class="ct sm ${c.tone}">${icon(c.icon, 18)}</span>
+        <span style="display:flex;flex-direction:column;gap:1px;min-width:0"><b style="font-weight:600">${c.name} · ${whenText}${draft.timeOfDay && draft.when !== 'now' ? `, ${draft.timeOfDay}` : ''}</b>
+        <span class="sub ellipsis">${draft.placeLabel} · no name or account ${tip('anonymous', 'How you stay anonymous')}</span></span>
+      </div>
+      <div id="turnstile"></div>
+      ${draft.error ? html`<p class="error-text" role="alert">${draft.error}</p>` : ''}
+    </div></div>
+    <div class="page-foot"><div class="wrap" style="display:flex;flex-direction:column;gap:8px">
+      ${draft.posting ? html`<div class="progress" aria-label="Posting"><i style="width:${Math.round(draft.progress * 100)}%"></i></div>` : ''}
+      <button type="button" class="btn red" id="post" ${busy || !checksOk || draft.posting ? 'disabled' : ''}>${draft.posting ? 'Posting…' : busy ? 'Preparing your files…' : 'Post anonymously'}</button>
+      <span class="small-note">Up to 3 reports an hour from each phone ${tip('limit', 'Why there is a limit')}</span>
+    </div></div>
+  </section>`);
+
+  bindMedia();
+  mountTurnstile();
+}
+
+function bindMedia() {
+  const q = (s) => page.querySelector(s);
+  q('#add-photo')?.addEventListener('change', async (e) => {
+    const maxPhotos = state.config?.maxPhotos || 3;
+    const files = [...e.target.files].slice(0, maxPhotos - draft.media.length);
+    for (const file of files) {
+      const item = { type: 'image/jpeg', busy: true, label: 'Cleaning photo…', progress: 0.5 };
+      draft.media.push(item);
+      renderMedia();
+      try {
+        Object.assign(item, await processPhoto(file), { busy: false });
+      } catch (err) {
+        draft.media.splice(draft.media.indexOf(item), 1);
+        toast(err.message);
+      }
+      renderMedia();
+    }
+  });
+  q('#add-clip')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) prepareClip(file);
+  });
+  q('#sound')?.addEventListener('change', (e) => {
+    draft.keepSound = e.target.checked;
+    const clip = draft.media.find((m) => m.type.startsWith('video/'));
+    if (clip?.file) {
+      // Re-make the clip so the sound is added or removed.
+      draft.media = [];
+      prepareClip(clip.file);
+    }
+  });
+  q('#sensitive')?.addEventListener('change', (e) => { draft.sensitive = e.target.checked; });
+  page.querySelectorAll('[data-check]').forEach((b) => b.addEventListener('change', () => {
+    draft.checks[b.dataset.check] = b.checked;
+    const ok = Object.values(draft.checks).every(Boolean);
+    q('#post').disabled = !ok || draft.media.some((m) => m.busy);
+  }));
+  page.querySelectorAll('[data-remove]').forEach((b) => b.addEventListener('click', () => {
+    const [m] = draft.media.splice(Number(b.dataset.remove), 1);
+    if (m?.preview) URL.revokeObjectURL(m.preview);
+    renderMedia();
+  }));
+  q('#post').addEventListener('click', post);
+}
+
+async function prepareClip(file) {
+  if (!canProcessClips()) { toast('This phone cannot prepare clips safely. Add photos instead.'); return; }
+  const item = { type: 'video/webm', busy: true, label: 'Cleaning clip… keep this screen open', progress: 0, file };
+  draft.media.push(item);
+  renderMedia();
+  let lastPaint = 0;
+  try {
+    const out = await processClip(file, {
+      keepSound: draft.keepSound,
+      onProgress: (p) => {
+        item.progress = p;
+        const now = performance.now();
+        if (now - lastPaint > 400) {
+          lastPaint = now;
+          const bar = page.querySelector('.media-tile .progress i');
+          if (bar) bar.style.width = `${Math.round(p * 100)}%`;
+        }
+      },
+    });
+    Object.assign(item, out, { busy: false });
+    if (out.trimmed) toast('Your clip was cut to the first 30 seconds.');
+    if (draft.keepSound && !out.soundKept) toast('The sound could not be kept on this phone. The clip is silent.');
+  } catch (err) {
+    draft.media.splice(draft.media.indexOf(item), 1);
+    toast(err.message, 5000);
+  }
+  if (location.hash === '#/report/3') renderMedia();
+}
+
+// ---- Bot check (Cloudflare Turnstile) ----------------------------------------------
+let tsWidget = null;
+let tsToken = null;
+let tsWaiters = [];
+
+function loadTurnstile() {
+  if (window.turnstile) return Promise.resolve();
+  if (window._tsLoading) return window._tsLoading;
+  window._tsLoading = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    s.async = true;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('The security check could not load. Check your connection.'));
+    document.head.appendChild(s);
+  });
+  return window._tsLoading;
+}
+
+async function mountTurnstile() {
+  const key = state.config?.turnstileSiteKey;
+  const box = page.querySelector('#turnstile');
+  if (!key || !box) return;
+  try {
+    await loadTurnstile();
+    if (!page.contains(box)) return;
+    if (tsWidget !== null) { try { window.turnstile.remove(tsWidget); } catch { /* already gone */ } }
+    tsWidget = window.turnstile.render(box, {
+      sitekey: key,
+      appearance: 'interaction-only',
+      callback: (t) => { tsToken = t; tsWaiters.forEach((w) => w(t)); tsWaiters = []; },
+      'expired-callback': () => { tsToken = null; },
+      'error-callback': () => { tsToken = null; },
+    });
+  } catch (err) {
+    draft.error = err.message;
+  }
+}
+
+function getToken() {
+  if (!state.config?.turnstileSiteKey) return Promise.resolve(null);
+  if (tsToken) return Promise.resolve(tsToken);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('The security check is taking too long. Tap Post again.')), 20000);
+    tsWaiters.push((t) => { clearTimeout(timer); resolve(t); });
+  });
+}
+
+// ---- Posting ---------------------------------------------------------------------------
+async function post() {
+  if (draft.posting) return;
+  draft.error = null;
+  draft.posting = true;
+  draft.progress = 0.02;
+  renderMedia();
+  try {
+    const token = await getToken();
+    const res = await api.create({
+      category: draft.category,
+      caption: draft.caption.trim(),
+      placeLabel: draft.placeLabel.trim(),
+      areaLabel: draft.areaLabel,
+      lat: fuzz(draft.lat),
+      lng: fuzz(draft.lng),
+      when: draft.when,
+      date: draft.date,
+      timeOfDay: draft.when === 'now' ? null : draft.timeOfDay,
+      sensitive: draft.sensitive,
+      media: draft.media.map((m) => ({ type: m.type, size: m.blob.size })),
+      turnstileToken: token,
+    });
+    const total = draft.media.reduce((s, m) => s + m.blob.size, 0) || 1;
+    let done = 0;
+    for (let i = 0; i < res.uploads.length; i += 1) {
+      const m = draft.media[i];
+      await upload(res.uploads[i].url, m.blob, (p) => {
+        draft.progress = 0.05 + 0.9 * ((done + p * m.blob.size) / total);
+        const bar = page.querySelector('.page-foot .progress i');
+        if (bar) bar.style.width = `${Math.round(draft.progress * 100)}%`;
+      });
+      done += m.blob.size;
+    }
+    if (res.finalizeToken) await api.finalize(res.id, res.finalizeToken);
+    mine.addPosted(res.id);
+    lastPosted = {
+      id: res.id,
+      title: (CATS[draft.category] || CATS.other).name,
+      where: draft.areaLabel || draft.placeLabel,
+    };
+    resetDraft();
+    refresh({ quiet: true });
+    location.hash = '#/report/done';
+  } catch (err) {
+    draft.posting = false;
+    draft.error = err.message;
+    tsToken = null;
+    if (window.turnstile && tsWidget !== null) { try { window.turnstile.reset(tsWidget); } catch { /* ignore */ } }
+    renderMedia();
+  }
+}
+
+// ---- Done -------------------------------------------------------------------------------
+function renderDone() {
+  showHome(true);
+  if (!lastPosted) { location.hash = '#/'; return; }
+  const p = lastPosted;
+  const stamp = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Lagos',
+  }).format(new Date());
+  mount(page, html`<section class="page" style="background:#F4F6F4" aria-label="Report posted">
+    <div class="page-scroll"><div class="wrap">
+      <div class="success">
+        <span style="width:76px;height:76px;border-radius:38px;background:var(--green-soft);display:flex;align-items:center;justify-content:center">
+          <span style="width:56px;height:56px;border-radius:28px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center">${icon('check', 28, 'style="stroke-width:2.8"')}</span></span>
+        <h1 class="big" style="margin-top:10px;font-size:30px">Report posted</h1>
+        <p class="lead" style="max-width:290px">It shows as Unverified until people nearby confirm it. Thank you for warning others.</p>
+      </div>
+      <div style="margin:32px 28px 0;display:flex;flex-direction:column;gap:10px">
+        <span class="section-label" style="padding:0">Share preview</span>
+        <div class="share-card">
+          <span style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:15px">CitizensWatch alert</b><span class="badge" style="background:rgba(255,255,255,.12);color:#fff">Unverified</span></span>
+          <span style="font-size:26px;font-weight:700;letter-spacing:-0.5px;color:#FF8A73">${p.title}</span>
+          <span style="font-size:16px">${p.where}</span>
+          <span style="font-size:13px;color:rgba(255,255,255,.65)">${stamp} · Live updates on the map</span>
+        </div>
+        <span class="sub" style="text-align:center;line-height:1.45">The link preview never shows your photo, your words or the exact spot.</span>
+      </div>
+    </div></div>
+    <div class="page-foot" style="background:transparent;border:0"><div class="wrap" style="display:flex;flex-direction:column;gap:10px">
+      <button type="button" class="btn" id="share">${icon('share', 20)}Share warning</button>
+      <a class="btn ghost" href="#/r/${p.id}">View your report</a>
+      <a class="btn ghost" href="#/">Back to map</a>
+    </div></div>
+  </section>`);
+  page.querySelector('#share').addEventListener('click', () => shareReport(p));
+}
