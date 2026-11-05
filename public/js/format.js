@@ -209,7 +209,7 @@ export function rangeTitle(filters) {
     const t = DAY.format(new Date(`${filters.to}T12:00:00Z`));
     return f === t ? f : `${f} – ${t}`;
   }
-  return RANGES[filters.range] || RANGES['24h'];
+  return RANGES[filters.range] || RANGES['7d'];
 }
 
 export function whereLabel(r) {

@@ -53,7 +53,7 @@ async function list(cfg, req, res) {
   }
 
   // Map mode: every visible report in the chosen time range.
-  const range = q.get('range') || '24h';
+  const range = q.get('range') || '7d';
   let from;
   let to = new Date(now).toISOString();
   if (range === 'custom') {

@@ -96,7 +96,7 @@ export function openRangePicker() {
     <button type="button" class="opt" role="radio" data-range="${key}" aria-checked="${f.range === key}">
       <span class="radio"></span><span style="flex:1">${label}</span>
       ${key === '1h' ? html`<span class="badge live">Live only</span>` : ''}
-      ${key === '24h' ? html`<span class="badge unverified">Default</span>` : ''}
+      ${key === '7d' ? html`<span class="badge unverified">Default</span>` : ''}
     </button>`);
   const close = openModal({
     title: 'Show reports from',
